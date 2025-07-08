@@ -36,7 +36,7 @@ def test_company_filtering():
     
     test_cases = [
         ("Capital One announces new partnership", True),
-        ("Truist Financial quarterly results", True),
+        ("Fannie Mae quarterly results", True),
         ("EagleBank technology upgrade", True),
         ("Capital Bank N.A. expansion plans", True),
         ("Random company news", False),

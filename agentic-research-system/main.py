@@ -111,8 +111,12 @@ class ResearchOrchestrator:
                     result = self.archivist.save_finding(finding)
                     if result == "New":
                         print(f"  ✅ Saved: {finding['headline']}")
-                    elif result == "Repeat":
-                        print(f"  🔄 Skipped (repeat): {finding['headline']}")
+                    elif result == "SemanticDuplicate":
+                        print(f"  🔄 Skipped (semantic duplicate): {finding['headline']}")
+                    elif result == "ExactDuplicate":
+                        print(f"  🔄 Skipped (exact duplicate): {finding['headline']}")
+                    else:
+                        print(f"  ⚠️  {result}: {finding['headline']}")
             else:
                 print("⚠️  No findings to archive")
 
@@ -128,32 +132,23 @@ class ResearchOrchestrator:
             
             # Get summary
             summary = self.reporter.get_report_summary()
-            print(f"📈 Report Summary: {summary.get('total_findings', 0)} findings, ${summary.get('total_value', 0):,} total value")
-
-            # Workflow complete
-            end_time = time.time()
-            duration = end_time - start_time
             
-            print("\n" + "=" * 60)
-            print(f"✅ Research workflow complete in {duration:.2f} seconds")
-            print(f"📊 Final Stats:")
-            print(f"   - Raw data items: {len(all_raw_data)}")
-            print(f"   - High-impact events: {len(analyzed_events)}")
-            print(f"   - Validated events: {len(validated_events)}")
-            print(f"   - Database findings: {summary.get('total_findings', 0)}")
-            print("=" * 60)
+            # Print summary
+            print(f"\n📈 Daily Summary:")
+            print(f"   Total Findings: {summary.get('total_findings', 0)}")
+            print(f"   Total Value: ${summary.get('total_value', 0):,}")
+            if summary.get('event_breakdown'):
+                print(f"   Event Types: {', '.join([f'{k} ({v})' for k, v in summary['event_breakdown'].items()])}")
 
         except Exception as e:
             print(f"❌ Error in research workflow: {e}")
-            import traceback
-            traceback.print_exc()
+            raise
 
-def run_manual_test():
-    """Run a single manual test of the workflow."""
-    print("🧪 Running manual test of the research workflow...")
-    orchestrator = ResearchOrchestrator()
-    asyncio.run(orchestrator.research_workflow())
-    print("✅ Manual test complete.")
+        finally:
+            end_time = time.time()
+            duration = end_time - start_time
+            print(f"\n⏱️  Workflow completed in {duration:.2f} seconds")
+            print("=" * 60)
 
 def setup_scheduler():
     """Setup the scheduler for automated daily runs."""
@@ -185,7 +180,7 @@ if __name__ == "__main__":
     
     if len(sys.argv) > 1 and sys.argv[1] == "test":
         # Manual test mode
-        run_manual_test()
+        asyncio.run(ResearchOrchestrator().research_workflow())
     elif len(sys.argv) > 1 and sys.argv[1] == "scheduler":
         # Scheduler mode
         setup_scheduler()
@@ -196,4 +191,4 @@ if __name__ == "__main__":
         print("  python main.py scheduler - Start automated scheduler")
         print("  python main.py           - Run manual test (default)")
         print()
-        run_manual_test()
+        asyncio.run(ResearchOrchestrator().research_workflow())
