@@ -8,32 +8,35 @@ from agents.http_utils import ethical_get
 
 class NewsExtractor:
     def __init__(self):
-        # Load environment variables
+        """Initializes the extractor with API keys, target lists, and timezone info."""
         load_dotenv()
-        self.marketaux_api_key = os.getenv("MARKETAUX_API_KEY")
+        self.gnews_api_key = os.getenv("GNEWS_API_KEY")
         
-        # RSS feeds for companies that have them (final, corrected)
+        # RSS feeds - Company-specific and regulatory feeds
         self.rss_feeds = {
+            # Company-Specific Feeds
             "Capital One": "https://www.capitalone.com/about/newsroom/rss.xml",
             "Freddie Mac": "https://www.freddiemac.com/news/rss.xml",
-            "Fannie Mae": "https://www.fanniemae.com/news/rss.xml"
+            "Fannie Mae": "https://www.fanniemae.com/news/rss.xml",
+            # Regulatory Feeds (General - will be processed for all companies)
+            "OCC Enforcement Actions": "https://www.occ.gov/static/rss/ea-all-rss.xml",
+            "Federal Reserve Enforcement Actions": "https://www.federalreserve.gov/feeds/enforcementactions.xml"
         }
         
-        # Companies to search via API (those without RSS feeds)
+        # Companies requiring API search via GNews.io (those without RSS feeds)
         self.api_targets = [
             "Navy Federal Credit Union", "PenFed Credit Union", "EagleBank", "Capital Bank N.A."
         ]
         
-        # Target companies for filtering (final, corrected)
+        # Target companies for filtering and analysis
         self.target_companies = [
-            "Capital One", "Fannie Mae", "Freddie Mac", "Navy Federal Credit Union", "PenFed Credit Union", "EagleBank", "Capital Bank N.A."
+            "Capital One", "Fannie Mae", "Freddie Mac", "Navy Federal Credit Union", 
+            "PenFed Credit Union", "EagleBank", "Capital Bank N.A."
         ]
         
-        # Default timezone for RSS feeds (most US financial feeds are in EST/EDT)
+        # Timezone configuration
         self.default_rss_timezone = ZoneInfo("America/New_York")
-        
-        # System timezone for comparison
-        self.system_timezone = ZoneInfo("America/Los_Angeles")  # Pacific Time
+        self.system_timezone = ZoneInfo("America/Los_Angeles")
 
     def _parse_rss_datetime(self, entry, field_name):
         """
@@ -118,17 +121,32 @@ class NewsExtractor:
         
         return is_recent
 
+    def _is_relevant_to_target_companies(self, title, summary, source_name):
+        """
+        Check if a regulatory RSS article is relevant to our target companies.
+        """
+        if source_name in ["OCC Enforcement Actions", "Federal Reserve Enforcement Actions"]:
+            # For regulatory feeds, check if any target company is mentioned
+            text_to_check = f"{title} {summary}".lower()
+            return any(company.lower() in text_to_check for company in self.target_companies)
+        else:
+            # For company-specific feeds, always relevant
+            return True
+
     def fetch_from_rss(self):
-        """Parses all known RSS feeds with proper timezone handling."""
+        """Parses all known RSS feeds for recent articles."""
         articles = []
-        for company, url in self.rss_feeds.items():
+        
+        for source_name, url in self.rss_feeds.items():
             try:
-                print(f"Fetching RSS feed for {company}...")
+                print(f"Fetching RSS feed for {source_name}...")
                 response = ethical_get(url, timeout=30)
                 if response is None or response.status_code != 200:
-                    print(f"Blocked or failed to fetch RSS feed for {company}")
+                    print(f"❌ Blocked or failed to fetch RSS feed for {source_name}")
                     continue
+                
                 feed = feedparser.parse(response.content)
+                feed_articles_count = 0
                 
                 for entry in feed.entries:
                     # Parse publication date with timezone handling
@@ -142,95 +160,158 @@ class NewsExtractor:
                     
                     # Check if article is recent (within last 24 hours)
                     if pub_date and self._is_recent_article(pub_date, hours_back=24):
-                        articles.append({
-                            'company': company,
-                            'title': entry.title,
-                            'link': entry.link,
-                            'summary': entry.summary if hasattr(entry, 'summary') else '',
-                            'published_date': pub_date.isoformat(),
-                            'source': 'RSS',
-                            'type': 'news'
-                        })
+                        # For regulatory feeds, check if relevant to target companies
+                        summary = entry.summary if hasattr(entry, 'summary') else ''
+                        
+                        if self._is_relevant_to_target_companies(entry.title, summary, source_name):
+                            # For regulatory feeds, try to identify which company is mentioned
+                            company_mentioned = self._identify_mentioned_company(entry.title, summary)
+                            
+                            articles.append({
+                                'company': company_mentioned or source_name,
+                                'title': entry.title,
+                                'link': entry.link,
+                                'summary': summary,
+                                'published_date': pub_date.isoformat(),
+                                'source': 'RSS',
+                                'type': 'news',
+                                'feed_source': source_name  # Track which RSS feed it came from
+                            })
+                            feed_articles_count += 1
+                        
+                print(f"   📰 Found {feed_articles_count} relevant articles from {source_name}")
                         
             except Exception as e:
-                print(f"Error fetching RSS feed for {company}: {e}")
+                print(f"❌ Error fetching RSS feed for {source_name}: {e}")
                 continue
         
-        print(f"Found {len(articles)} recent articles from RSS feeds")
+        print(f"✅ Found {len(articles)} total recent articles from RSS feeds")
         return articles
 
-    def fetch_from_api(self):
-        """Fetches news from Marketaux API for companies without RSS."""
-        if not self.marketaux_api_key:
-            print("Warning: MARKETAUX_API_KEY not found. Skipping API news fetch.")
+    def _identify_mentioned_company(self, title, summary):
+        """
+        Try to identify which target company is mentioned in a regulatory article.
+        """
+        text_to_check = f"{title} {summary}".lower()
+        
+        # Check for exact company name matches
+        for company in self.target_companies:
+            if company.lower() in text_to_check:
+                return company
+        
+        # Check for common variations/abbreviations
+        company_variations = {
+            "capital one": "Capital One",
+            "capitalone": "Capital One",
+            "cof": "Capital One",
+            "fannie mae": "Fannie Mae",
+            "fanniemae": "Fannie Mae",
+            "fnma": "Fannie Mae",
+            "freddie mac": "Freddie Mac",
+            "freddiemac": "Freddie Mac",
+            "fmcc": "Freddie Mac",
+            "navy federal": "Navy Federal Credit Union",
+            "navy federal credit union": "Navy Federal Credit Union",
+            "penfed": "PenFed Credit Union",
+            "penfed credit union": "PenFed Credit Union",
+            "eaglebank": "EagleBank",
+            "eagle bank": "EagleBank",
+            "egbn": "EagleBank",
+            "capital bank": "Capital Bank N.A.",
+            "capital bank n.a.": "Capital Bank N.A.",
+            "cbnk": "Capital Bank N.A."
+        }
+        
+        for variation, company in company_variations.items():
+            if variation in text_to_check:
+                return company
+        
+        return None
+
+    def fetch_from_gnews(self):
+        """
+        Fetches news from GNews.io API for companies without dedicated RSS feeds.
+        """
+        if not self.gnews_api_key:
+            print("⚠️  Warning: GNEWS_API_KEY not found. Skipping API news fetch.")
             return []
         
         articles = []
-        try:
-            print("Fetching news from Marketaux API...")
-            
-            # Search for each target company
-            for company in self.api_targets:
+        base_url = "https://gnews.io/api/v4/search"
+        print("Fetching news from GNews.io API...")
+
+        for company in self.api_targets:
+            try:
+                # Use exact company name for better precision
+                query = f'"{company}"'
                 params = {
-                    'api_token': self.marketaux_api_key,
-                    'entity': company,
-                    'language': 'en',
-                    'limit': 10,
-                    'sort': 'published_at'
+                    'q': query,
+                    'lang': 'en',
+                    'apikey': self.gnews_api_key,
+                    'max': 10,
+                    'sortby': 'publishedAt'  # Get most recent articles first
                 }
                 
-                response = ethical_get("https://api.marketaux.com/v1/news/all", params=params, timeout=30)
-                if response is None:
-                    print(f"Blocked or failed to fetch Marketaux API for {company}")
+                response = ethical_get(base_url, params=params, timeout=30)
+                if response is None or response.status_code != 200:
+                    print(f"❌ Blocked or received bad status code from GNews API for {company}")
                     continue
-                response.raise_for_status()
+                
                 data = response.json()
                 
-                for article in data.get("data", []):
-                    pub_date_str = article.get("published_at", "")
-                    if pub_date_str:
-                        try:
-                            # Marketaux API provides ISO 8601 format with timezone
-                            # Handle both 'Z' (UTC) and explicit timezone offsets
-                            if pub_date_str.endswith('Z'):
-                                # Convert UTC to system timezone
-                                utc_dt = datetime.fromisoformat(pub_date_str.replace('Z', '+00:00'))
-                                pub_date = utc_dt.astimezone(self.system_timezone)
-                            else:
-                                # Already has timezone info
-                                pub_date = datetime.fromisoformat(pub_date_str)
-                                # Convert to system timezone for consistency
-                                pub_date = pub_date.astimezone(self.system_timezone)
-                            
-                            # Check if article is recent
-                            if self._is_recent_article(pub_date, hours_back=24):
-                                articles.append({
-                                    'company': company,
-                                    'title': article.get("title", ""),
-                                    'link': article.get("url", ""),
-                                    'summary': article.get("description", ""),
-                                    'published_date': pub_date.isoformat(),
-                                    'source': 'Marketaux API',
-                                    'type': 'news'
-                                })
-                        except ValueError as e:
-                            print(f"⚠️  Invalid date format in API response: {pub_date_str} - {e}")
-                            continue
-                            
-        except requests.RequestException as e:
-            print(f"Error fetching data from Marketaux API: {e}")
-        except Exception as e:
-            print(f"Unexpected error in API news fetch: {e}")
-        
-        print(f"Found {len(articles)} recent articles from Marketaux API")
+                if 'errors' in data:
+                    print(f"❌ GNews API returned an error for '{company}': {data['errors']}")
+                    continue
+
+                company_articles_count = 0
+                for article in data.get("articles", []):
+                    pub_date_str = article.get("publishedAt")
+                    if not pub_date_str:
+                        continue
+
+                    try:
+                        # GNews provides UTC timestamps
+                        utc_dt = datetime.fromisoformat(pub_date_str.replace('Z', '+00:00'))
+                        pub_date_local = utc_dt.astimezone(self.system_timezone)
+
+                        if self._is_recent_article(pub_date_local, hours_back=24):
+                            articles.append({
+                                'company': company,
+                                'title': article.get("title", ""),
+                                'link': article.get("url", ""),
+                                'summary': article.get("description", ""),
+                                'published_date': pub_date_local.isoformat(),
+                                'source': 'GNews API',
+                                'type': 'news',
+                                'feed_source': 'GNews API'
+                            })
+                            company_articles_count += 1
+                    except ValueError as e:
+                        print(f"⚠️  Invalid date format in GNews response: {pub_date_str} - {e}")
+                        continue
+                
+                print(f"   📰 Found {company_articles_count} recent articles for {company}")
+            
+            except requests.RequestException as e:
+                print(f"❌ Error fetching data from GNews API for {company}: {e}")
+            except Exception as e:
+                print(f"❌ Unexpected error in GNews fetch for {company}: {e}")
+
+        print(f"✅ Found {len(articles)} total recent articles from GNews API")
         return articles
 
     def get_all_news(self):
-        """Combines news from both RSS and API sources."""
+        """Combines news from both RSS and GNews API sources."""
         rss_articles = self.fetch_from_rss()
-        api_articles = self.fetch_from_api()
+        api_articles = self.fetch_from_gnews()
         
         all_articles = rss_articles + api_articles
-        print(f"Total news articles found: {len(all_articles)}")
+        print(f"📰 Total news articles found: {len(all_articles)}")
+        
+        # Log breakdown by source
+        rss_count = len(rss_articles)
+        api_count = len(api_articles)
+        print(f"   📊 RSS Articles: {rss_count}")
+        print(f"   📊 GNews API Articles: {api_count}")
         
         return all_articles 

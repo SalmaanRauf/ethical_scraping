@@ -28,7 +28,7 @@ The system follows a modular, multi-agent architecture with the following compon
 ## API Keys Required
 
 - SEC_API_KEY (sec-api.io)
-- MARKETAUX_API_KEY (Marketaux)
+- GNEWS_API_KEY (GNews.io)
 - SAM_API_KEY (SAM.gov)
 - OPENAI_API_KEY (OpenAI)
 - Google Search_API_KEY (Google Cloud Console)

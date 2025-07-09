@@ -38,7 +38,7 @@ Add these to your `.env` file:
 ```env
 # Data Extraction
 SEC_API_KEY="your_sec_api_key_here"
-MARKETAUX_API_KEY="your_marketaux_api_key_here"
+GNEWS_API_KEY="your_gnews_api_key_here"
 SAM_API_KEY="your_sam_gov_api_key_here"
 
 # AI Analysis
@@ -53,7 +53,8 @@ GOOGLE_CSE_ID="your_google_custom_search_engine_id_here"
 
 1. **Extracts Data** from:
    - SAM.gov (procurement notices)
-   - News RSS feeds and Marketaux API
+   - News RSS feeds (company-specific + regulatory feeds)
+   - GNews.io API (for companies without RSS feeds)
    - SEC filings (8-K, 10-Q, 10-K)
 
 2. **Analyzes** using AI to find:
