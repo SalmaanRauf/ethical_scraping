@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Test script for the new news extractor implementation.
-Tests the RSS feeds and GNews API integration.
+Test script for the updated news extractor implementation.
+Tests the RSS feeds (company-specific + regulatory) and GNews API for all companies.
 """
 
 import os
@@ -12,8 +12,8 @@ from dotenv import load_dotenv
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "agentic-research-system"))
 
 def test_news_extractor():
-    """Test the new news extractor implementation."""
-    print("🧪 Testing New News Extractor Implementation")
+    """Test the updated news extractor implementation."""
+    print("🧪 Testing Updated News Extractor Implementation")
     print("=" * 50)
     
     # Load environment variables
@@ -40,8 +40,8 @@ def test_news_extractor():
         for source, url in extractor.rss_feeds.items():
             print(f"   - {source}: {url}")
         
-        # Test API targets
-        print(f"\n🔍 API Targets:")
+        # Test API targets (now includes ALL companies)
+        print(f"\n🔍 GNews API Targets (ALL companies):")
         for company in extractor.api_targets:
             print(f"   - {company}")
         
@@ -51,7 +51,7 @@ def test_news_extractor():
         print(f"✅ RSS test completed: {len(rss_articles)} articles found")
         
         # Test GNews API (limited test)
-        print(f"\n🔍 Testing GNews API...")
+        print(f"\n🔍 Testing GNews API for all companies...")
         api_articles = extractor.fetch_from_gnews()
         print(f"✅ GNews API test completed: {len(api_articles)} articles found")
         
@@ -67,6 +67,14 @@ def test_news_extractor():
             for key, value in sample.items():
                 print(f"   {key}: {str(value)[:100]}{'...' if len(str(value)) > 100 else ''}")
         
+        # Show breakdown by source
+        rss_count = len(rss_articles)
+        api_count = len(api_articles)
+        print(f"\n📊 Summary:")
+        print(f"   📰 RSS Articles: {rss_count}")
+        print(f"   🔍 GNews API Articles: {api_count}")
+        print(f"   📈 Total Articles: {len(all_news)}")
+        
         return True
         
     except Exception as e:
@@ -78,7 +86,8 @@ def test_news_extractor():
 if __name__ == "__main__":
     success = test_news_extractor()
     if success:
-        print("\n🎉 News extractor test completed successfully!")
+        print("\n🎉 Updated news extractor test completed successfully!")
+        print("✅ Hybrid approach working: RSS + GNews API for all companies")
     else:
-        print("\n❌ News extractor test failed!")
+        print("\n❌ Updated news extractor test failed!")
         sys.exit(1) 

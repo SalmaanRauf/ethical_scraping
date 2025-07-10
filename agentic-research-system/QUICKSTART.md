@@ -53,14 +53,17 @@ GOOGLE_CSE_ID="your_google_custom_search_engine_id_here"
 
 1. **Extracts Data** from:
    - SAM.gov (procurement notices)
-   - News RSS feeds (company-specific + regulatory feeds)
-   - GNews.io API (for companies without RSS feeds)
+   - **Comprehensive News Coverage**:
+     - Company-specific RSS feeds (Capital One, Freddie Mac, Fannie Mae)
+     - Regulatory RSS feeds (OCC Bulletins, Federal Reserve Enforcement Actions)
+     - GNews.io API for ALL companies (comprehensive coverage)
    - SEC filings (8-K, 10-Q, 10-K)
 
 2. **Analyzes** using AI to find:
    - Financial events > $10M
    - Procurement opportunities > $10M
    - Forward-looking spending guidance
+   - Regulatory enforcement actions
 
 3. **Validates** findings across sources
 

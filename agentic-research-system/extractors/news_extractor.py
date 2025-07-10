@@ -18,14 +18,15 @@ class NewsExtractor:
             "Capital One": "https://www.capitalone.com/about/newsroom/rss.xml",
             "Freddie Mac": "https://www.freddiemac.com/news/rss.xml",
             "Fannie Mae": "https://www.fanniemae.com/news/rss.xml",
-            # Regulatory Feeds (General - will be processed for all companies)
-            "OCC Enforcement Actions": "https://www.occ.gov/static/rss/ea-all-rss.xml",
-            "Federal Reserve Enforcement Actions": "https://www.federalreserve.gov/feeds/enforcementactions.xml"
+            # Regulatory Feeds (corrected links from research)
+            "OCC Bulletins": "https://www.occ.gov/rss/occ_bulletins.xml",
+            "Federal Reserve Enforcement Actions": "https://www.federalreserve.gov/feeds/press_enforcement.xml"
         }
         
-        # Companies requiring API search via GNews.io (those without RSS feeds)
+        # ALL companies will be searched via GNews API for comprehensive coverage
         self.api_targets = [
-            "Navy Federal Credit Union", "PenFed Credit Union", "EagleBank", "Capital Bank N.A."
+            "Capital One", "Fannie Mae", "Freddie Mac", "Navy Federal Credit Union", 
+            "PenFed Credit Union", "EagleBank", "Capital Bank N.A."
         ]
         
         # Target companies for filtering and analysis
@@ -125,7 +126,7 @@ class NewsExtractor:
         """
         Check if a regulatory RSS article is relevant to our target companies.
         """
-        if source_name in ["OCC Enforcement Actions", "Federal Reserve Enforcement Actions"]:
+        if source_name in ["OCC Bulletins", "Federal Reserve Enforcement Actions"]:
             # For regulatory feeds, check if any target company is mentioned
             text_to_check = f"{title} {summary}".lower()
             return any(company.lower() in text_to_check for company in self.target_companies)
@@ -230,7 +231,8 @@ class NewsExtractor:
 
     def fetch_from_gnews(self):
         """
-        Fetches news from GNews.io API for companies without dedicated RSS feeds.
+        Fetches news from GNews.io API for ALL corporate targets.
+        This provides comprehensive coverage for all companies.
         """
         if not self.gnews_api_key:
             print("⚠️  Warning: GNEWS_API_KEY not found. Skipping API news fetch.")
@@ -238,7 +240,7 @@ class NewsExtractor:
         
         articles = []
         base_url = "https://gnews.io/api/v4/search"
-        print("Fetching news from GNews.io API...")
+        print("Fetching news from GNews.io API for all corporate targets...")
 
         for company in self.api_targets:
             try:
