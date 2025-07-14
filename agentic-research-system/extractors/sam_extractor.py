@@ -147,8 +147,8 @@ class SAMExtractor:
             return []
 
         # Set date range for the last 24 hours
-        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-        today = datetime.now().strftime('%Y-%m-%d')
+        yesterday = (datetime.now() - timedelta(days=1)).strftime('%m/%d/%Y')
+        today = datetime.now().strftime('%m/%d/%Y')
         
         params = {
             'api_key': self.api_key, 
@@ -272,8 +272,8 @@ class SAMExtractor:
             return
 
         # Get a few recent notices
-        yesterday = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')  # Look back 7 days for more data
-        today = datetime.now().strftime('%Y-%m-%d')
+        yesterday = (datetime.now() - timedelta(days=7)).strftime('%m/%d/%Y')  # Look back 7 days for more data
+        today = datetime.now().strftime('%m/%d/%Y')
         
         params = {
             'api_key': self.api_key, 

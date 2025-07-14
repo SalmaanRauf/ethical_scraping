@@ -1,4 +1,5 @@
 import os
+import asyncio
 from sec_api import QueryApi, ExtractorApi
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
