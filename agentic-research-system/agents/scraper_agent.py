@@ -4,35 +4,36 @@ import time
 from typing import Optional, Dict, Any
 from collections import defaultdict
 from urllib.parse import urlparse
-from crawl4ai import AsyncWebCrawler
-from crawl4ai.config import BrowserConfig, CrawlerRunConfig
+from playwright.async_api import async_playwright
+from bs4 import BeautifulSoup
+import re
 
 logger = logging.getLogger(__name__)
 
 class ScraperAgent:
     """
-    Uses crawl4ai to scrape and clean the main content of any URL.
+    Uses playwright and beautifulsoup4 to scrape and clean the main content of any URL.
     Integrates with our existing architecture for enhanced data extraction.
     """
 
     def __init__(self):
-        self.crawler = None
+        self.browser = None
+        self.page = None
         self.rate_limit_semaphore = asyncio.Semaphore(5)  # Max 5 concurrent requests
         self.last_request_times = defaultdict(float)  # Per-domain tracking
         self.min_request_interval = 1.0  # 1 second between requests
         self._rate_limit_lock = asyncio.Lock()  # Lock for rate limiting
+        self._playwright = None
         
-        try:
-            self.crawler = AsyncWebCrawler(
-                browser_config=BrowserConfig(
-                    provider="playwright",
-                    headless=True
-                )
-            )
-            logger.info("✅ ScraperAgent initialized successfully")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize ScraperAgent: {e}")
-            self.crawler = None
+        logger.info("✅ ScraperAgent initialized successfully")
+
+    async def _ensure_browser(self):
+        """Ensure browser is initialized."""
+        if not self._playwright:
+            self._playwright = await async_playwright().start()
+            self.browser = await self._playwright.chromium.launch(headless=True)
+            self.page = await self.browser.new_page()
+            logger.info("✅ Browser initialized")
 
     async def scrape_url(self, url: str, content_type: str = "general", timeout: int = 30) -> Optional[str]:
         """
@@ -45,7 +46,7 @@ class ScraperAgent:
         Returns:
             Extracted text content or None if failed
         """
-        if not url or not self.crawler:
+        if not url:
             return None
             
         # Extract domain for per-domain rate limiting
@@ -67,40 +68,23 @@ class ScraperAgent:
                 self.last_request_times[domain] = time.time()
             
             try:
-                # Customize extraction prompt based on content type
-                extraction_prompts = {
-                    "news": (
-                        "Extract the main article content including title, date, author, and body text. "
-                        "Format as clean Markdown. Omit navigation, ads, comments, and unrelated sections. "
-                        "Focus on the primary news content and any financial details mentioned."
-                    ),
-                    "sec_filing": (
-                        "Extract the main filing content including company information, financial data, "
-                        "risk factors, and key disclosures. Format as clean Markdown. "
-                        "Focus on material information and financial statements."
-                    ),
-                    "procurement": (
-                        "Extract the main procurement notice content including project description, "
-                        "requirements, deadlines, and budget information. Format as clean Markdown. "
-                        "Focus on the scope of work and technical requirements."
-                    ),
-                    "general": (
-                        "Extract the main content including title, date, and body text. "
-                        "Format as clean Markdown. Omit navigation, ads, and unrelated sections."
-                    )
-                }
+                # Ensure browser is ready
+                await self._ensure_browser()
                 
-                prompt = extraction_prompts.get(content_type, extraction_prompts["general"])
+                # Navigate to the page
+                await self.page.goto(url, timeout=timeout * 1000)
                 
-                run_cfg = CrawlerRunConfig(
-                    url=url,
-                    extraction_strategy="llm-extractor",
-                    llm_extraction_prompt=prompt,
-                    timeout=timeout
-                )
+                # Wait for content to load
+                await self.page.wait_for_load_state("networkidle", timeout=10000)
                 
-                result = await self.crawler.arun(config=run_cfg)
-                extracted_content = result.markdown or ""
+                # Get the page content
+                content = await self.page.content()
+                
+                # Parse with BeautifulSoup
+                soup = BeautifulSoup(content, 'html.parser')
+                
+                # Extract content based on type
+                extracted_content = self._extract_content_by_type(soup, content_type)
                 
                 if extracted_content:
                     logger.info(f"✅ Successfully scraped {len(extracted_content)} chars from {url}")
@@ -116,6 +100,119 @@ class ScraperAgent:
                 import traceback
                 logger.error(f"📋 Full traceback: {traceback.format_exc()}")
                 return None
+
+    def _extract_content_by_type(self, soup: BeautifulSoup, content_type: str) -> str:
+        """Extract content based on the type of page."""
+        
+        # Remove unwanted elements
+        for element in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'iframe', 'noscript']):
+            element.decompose()
+        
+        # Remove elements with common ad/analytics classes
+        for element in soup.find_all(class_=re.compile(r'(ad|ads|advertisement|analytics|tracking|social|share|comment|sidebar|popup|modal|overlay)', re.I)):
+            element.decompose()
+        
+        if content_type == "news":
+            return self._extract_news_content(soup)
+        elif content_type == "sec_filing":
+            return self._extract_sec_content(soup)
+        elif content_type == "procurement":
+            return self._extract_procurement_content(soup)
+        else:
+            return self._extract_general_content(soup)
+
+    def _extract_news_content(self, soup: BeautifulSoup) -> str:
+        """Extract news article content."""
+        content_parts = []
+        
+        # Try to find title
+        title = soup.find('h1') or soup.find('title')
+        if title:
+            content_parts.append(f"# {title.get_text().strip()}")
+        
+        # Try to find article body
+        article = soup.find('article') or soup.find(class_=re.compile(r'(article|post|entry|content)', re.I))
+        if article:
+            # Extract paragraphs
+            paragraphs = article.find_all(['p', 'h2', 'h3', 'h4'])
+            for p in paragraphs:
+                text = p.get_text().strip()
+                if text and len(text) > 20:  # Filter out short snippets
+                    if p.name.startswith('h'):
+                        content_parts.append(f"\n## {text}")
+                    else:
+                        content_parts.append(text)
+        
+        return '\n\n'.join(content_parts)
+
+    def _extract_sec_content(self, soup: BeautifulSoup) -> str:
+        """Extract SEC filing content."""
+        content_parts = []
+        
+        # Try to find filing title
+        title = soup.find('h1') or soup.find('title')
+        if title:
+            content_parts.append(f"# {title.get_text().strip()}")
+        
+        # Look for filing content
+        filing_content = soup.find(class_=re.compile(r'(filing|document|content|text)', re.I))
+        if filing_content:
+            paragraphs = filing_content.find_all(['p', 'h2', 'h3', 'h4', 'div'])
+            for p in paragraphs:
+                text = p.get_text().strip()
+                if text and len(text) > 20:
+                    if p.name.startswith('h'):
+                        content_parts.append(f"\n## {text}")
+                    else:
+                        content_parts.append(text)
+        
+        return '\n\n'.join(content_parts)
+
+    def _extract_procurement_content(self, soup: BeautifulSoup) -> str:
+        """Extract procurement notice content."""
+        content_parts = []
+        
+        # Try to find notice title
+        title = soup.find('h1') or soup.find('title')
+        if title:
+            content_parts.append(f"# {title.get_text().strip()}")
+        
+        # Look for procurement details
+        procurement_content = soup.find(class_=re.compile(r'(procurement|notice|solicitation|contract)', re.I))
+        if procurement_content:
+            paragraphs = procurement_content.find_all(['p', 'h2', 'h3', 'h4', 'div'])
+            for p in paragraphs:
+                text = p.get_text().strip()
+                if text and len(text) > 20:
+                    if p.name.startswith('h'):
+                        content_parts.append(f"\n## {text}")
+                    else:
+                        content_parts.append(text)
+        
+        return '\n\n'.join(content_parts)
+
+    def _extract_general_content(self, soup: BeautifulSoup) -> str:
+        """Extract general page content."""
+        content_parts = []
+        
+        # Try to find main title
+        title = soup.find('h1') or soup.find('title')
+        if title:
+            content_parts.append(f"# {title.get_text().strip()}")
+        
+        # Find main content area
+        main_content = soup.find('main') or soup.find(class_=re.compile(r'(main|content|body|text)', re.I))
+        if main_content:
+            paragraphs = main_content.find_all(['p', 'h2', 'h3', 'h4'])
+            for p in paragraphs:
+                text = p.get_text().strip()
+                if text and len(text) > 20:
+                    if p.name.startswith('h'):
+                        content_parts.append(f"\n## {text}")
+                    else:
+                        content_parts.append(text)
+        
+        return '\n\n'.join(content_parts)
 
     async def scrape_multiple_urls(self, urls: list, content_type: str = "general") -> Dict[str, str]:
         """
@@ -152,13 +249,25 @@ class ScraperAgent:
 
     def is_available(self) -> bool:
         """Check if the scraper is properly initialized and available."""
-        return self.crawler is not None
+        return self._playwright is not None
 
     async def close(self):
         """Clean up browser resources."""
-        if self.crawler:
+        if self.page:
             try:
-                await self.crawler.close()
+                await self.page.close()
+            except Exception as e:
+                logger.error(f"❌ Error closing page: {e}")
+        
+        if self.browser:
+            try:
+                await self.browser.close()
+            except Exception as e:
+                logger.error(f"❌ Error closing browser: {e}")
+        
+        if self._playwright:
+            try:
+                await self._playwright.stop()
                 logger.info("✅ ScraperAgent browser resources cleaned up")
             except Exception as e:
                 logger.error(f"❌ Error closing ScraperAgent: {e}") 
