@@ -1,35 +1,89 @@
 import sqlite3
 import pandas as pd
+import time
 from datetime import date, datetime
 from typing import List, Dict, Any
 import os
+from functools import wraps
+
+def retry_file_operation(max_retries=3, delay=1):
+    """Decorator for retrying file operations with exponential backoff."""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except IOError as e:
+                    if attempt == max_retries - 1:
+                        print(f"❌ File operation failed after {max_retries} attempts: {e}")
+                        raise
+                    print(f"⚠️  File operation failed (attempt {attempt + 1}/{max_retries}): {e}")
+                    time.sleep(delay * (2 ** attempt))  # Exponential backoff
+            return None
+        return wrapper
+    return decorator
 
 class Reporter:
     def __init__(self, db_path='data/research.db'):
         self.db_path = db_path
+        self.max_results_per_query = 1000  # Limit results to prevent memory issues
         # Ensure reports directory exists
         os.makedirs('reports', exist_ok=True)
+
+    def _get_paginated_results(self, query: str, params: tuple, page_size: int = 100) -> pd.DataFrame:
+        """Get results in pages to prevent memory issues with large datasets."""
+        all_results = []
+        offset = 0
+        
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                while True:
+                    # Add LIMIT and OFFSET to query
+                    paginated_query = f"{query} LIMIT {page_size} OFFSET {offset}"
+                    
+                    df_page = pd.read_sql_query(paginated_query, conn, params=params)
+                    
+                    if df_page.empty:
+                        break
+                    
+                    all_results.append(df_page)
+                    offset += page_size
+                    
+                    # Safety check to prevent infinite loops
+                    if len(all_results) * page_size > self.max_results_per_query:
+                        print(f"⚠️  Reached maximum results limit ({self.max_results_per_query})")
+                        break
+                
+                # Combine all pages
+                if all_results:
+                    return pd.concat(all_results, ignore_index=True)
+                else:
+                    return pd.DataFrame()
+                    
+        except Exception as e:
+            print(f"❌ Error in paginated query: {e}")
+            return pd.DataFrame()
 
     def generate_report(self) -> str:
         """
         Queries DB for today's findings and generates a report.
         """
         today_str = date.today().isoformat()
-        conn = sqlite3.connect(self.db_path)
-
+        
         try:
-            # Query for findings found today
-            query = f"""
+            # Query for findings found today using pagination
+            query = """
                 SELECT 
                     date_found, company, headline, what_happened, 
                     why_it_matters, consulting_angle, source_url, 
                     event_type, value_usd, source_type
                 FROM findings 
-                WHERE date_found LIKE '{today_str}%'
+                WHERE date_found LIKE ?
                 ORDER BY created_at DESC
             """
             
-            df = pd.read_sql_query(query, conn)
+            df = self._get_paginated_results(query, (f"{today_str}%",))
             
             if df.empty:
                 report_content = "# Daily Intelligence Report\n\n"
@@ -95,40 +149,39 @@ class Reporter:
         except Exception as e:
             print(f"❌ Error generating report: {e}")
             report_content = f"# Error Generating Report\n\nError: {e}"
-        finally:
-            conn.close()
 
-        # Save report to a file
+        # Save report to a file with retry logic
         report_filename = f"reports/report-{today_str}.md"
-        try:
-            with open(report_filename, 'w', encoding='utf-8') as f:
-                f.write(report_content)
-            print(f"✅ Report generated: {report_filename}")
-        except Exception as e:
-            print(f"❌ Error saving report: {e}")
+        self._save_report_with_retry(report_filename, report_content)
 
         return report_content
+
+    @retry_file_operation(max_retries=3, delay=1)
+    def _save_report_with_retry(self, filename: str, content: str):
+        """Save report with retry logic."""
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(content)
+        print(f"✅ Report generated: {filename}")
 
     def generate_csv_report(self) -> str:
         """
         Generate a CSV version of today's report.
         """
         today_str = date.today().isoformat()
-        conn = sqlite3.connect(self.db_path)
-
+        
         try:
-            # Query for findings found today
-            query = f"""
+            # Query for findings found today using pagination
+            query = """
                 SELECT 
                     date_found, company, headline, what_happened, 
                     why_it_matters, consulting_angle, source_url, 
                     event_type, value_usd, source_type
                 FROM findings 
-                WHERE date_found LIKE '{today_str}%'
+                WHERE date_found LIKE ?
                 ORDER BY created_at DESC
             """
             
-            df = pd.read_sql_query(query, conn)
+            df = self._get_paginated_results(query, (f"{today_str}%",))
             
             if not df.empty:
                 # Add Key Person columns
@@ -148,10 +201,9 @@ class Reporter:
                     'value_usd': 'Value (USD)'
                 }, inplace=True)
                 
-                # Save CSV
+                # Save CSV with retry logic
                 csv_filename = f"reports/report-{today_str}.csv"
-                df.to_csv(csv_filename, index=False)
-                print(f"✅ CSV report generated: {csv_filename}")
+                self._save_csv_with_retry(csv_filename, df)
                 return csv_filename
             else:
                 print("No data found for CSV report")
@@ -160,48 +212,50 @@ class Reporter:
         except Exception as e:
             print(f"❌ Error generating CSV report: {e}")
             return ""
-        finally:
-            conn.close()
+
+    @retry_file_operation(max_retries=3, delay=1)
+    def _save_csv_with_retry(self, filename: str, df: pd.DataFrame):
+        """Save CSV with retry logic."""
+        df.to_csv(filename, index=False)
+        print(f"✅ CSV report generated: {filename}")
 
     def get_report_summary(self) -> Dict[str, Any]:
         """
         Get a summary of today's findings for quick review.
         """
         today_str = date.today().isoformat()
-        conn = sqlite3.connect(self.db_path)
-
+        
         try:
-            # Get basic counts
-            cursor = conn.cursor()
-            cursor.execute(f"SELECT COUNT(*) FROM findings WHERE date_found LIKE '{today_str}%'")
-            total_findings = cursor.fetchone()[0]
-            
-            # Get event type breakdown
-            cursor.execute(f"""
-                SELECT event_type, COUNT(*) 
-                FROM findings 
-                WHERE date_found LIKE '{today_str}%' 
-                GROUP BY event_type
-            """)
-            event_breakdown = dict(cursor.fetchall())
-            
-            # Get total value
-            cursor.execute(f"""
-                SELECT SUM(value_usd) 
-                FROM findings 
-                WHERE date_found LIKE '{today_str}%' AND value_usd > 0
-            """)
-            total_value = cursor.fetchone()[0] or 0
-            
-            return {
-                'date': today_str,
-                'total_findings': total_findings,
-                'event_breakdown': event_breakdown,
-                'total_value': total_value
-            }
-            
+            with sqlite3.connect(self.db_path) as conn:
+                # Get basic counts
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM findings WHERE date_found LIKE ?", (f"{today_str}%",))
+                total_findings = cursor.fetchone()[0]
+                
+                # Get event type breakdown
+                cursor.execute("""
+                    SELECT event_type, COUNT(*) 
+                    FROM findings 
+                    WHERE date_found LIKE ? 
+                    GROUP BY event_type
+                """, (f"{today_str}%",))
+                event_breakdown = dict(cursor.fetchall())
+                
+                # Get total value
+                cursor.execute("""
+                    SELECT SUM(value_usd) 
+                    FROM findings 
+                    WHERE date_found LIKE ? AND value_usd > 0
+                """, (f"{today_str}%",))
+                total_value = cursor.fetchone()[0] or 0
+                
+                return {
+                    'date': today_str,
+                    'total_findings': total_findings,
+                    'event_breakdown': event_breakdown,
+                    'total_value': total_value
+                }
+                
         except Exception as e:
             print(f"❌ Error getting report summary: {e}")
-            return {}
-        finally:
-            conn.close() 
+            return {} 

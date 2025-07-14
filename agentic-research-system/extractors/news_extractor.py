@@ -7,10 +7,11 @@ from dotenv import load_dotenv
 from agents.http_utils import ethical_get
 
 class NewsExtractor:
-    def __init__(self):
+    def __init__(self, scraper_agent=None):
         """Initializes the extractor with API keys, target lists, and timezone info."""
         load_dotenv()
         self.gnews_api_key = os.getenv("GNEWS_API_KEY")
+        self.scraper_agent = scraper_agent
         
         # RSS feeds - Company-specific and regulatory feeds
         self.rss_feeds = {
@@ -109,7 +110,7 @@ class NewsExtractor:
         # Get current time in system timezone
         now = self._get_system_datetime()
         
-        # Calculate cutoff time
+        # Calculate cutoff time using the hours_back parameter
         cutoff_time = now - timedelta(hours=hours_back)
         
         # Compare timezone-aware datetimes
@@ -147,6 +148,11 @@ class NewsExtractor:
                     continue
                 
                 feed = feedparser.parse(response.content)
+                
+                # Check for malformed RSS feeds
+                if feed.bozo:
+                    print(f"⚠️  Warning: RSS feed for {source_name} is malformed: {feed.bozo_exception}")
+                
                 feed_articles_count = 0
                 
                 for entry in feed.entries:
@@ -176,7 +182,9 @@ class NewsExtractor:
                                 'published_date': pub_date.isoformat(),
                                 'source': 'RSS',
                                 'type': 'news',
-                                'feed_source': source_name  # Track which RSS feed it came from
+                                'data_type': 'news',
+                                'feed_source': source_name,  # Track which RSS feed it came from
+                                'content_enhanced': False  # Will be set to True if scraping succeeds
                             })
                             feed_articles_count += 1
                         
@@ -285,7 +293,9 @@ class NewsExtractor:
                                 'published_date': pub_date_local.isoformat(),
                                 'source': 'GNews API',
                                 'type': 'news',
-                                'feed_source': 'GNews API'
+                                'data_type': 'news',
+                                'feed_source': 'GNews API',
+                                'content_enhanced': False  # Will be set to True if scraping succeeds
                             })
                             company_articles_count += 1
                     except ValueError as e:
@@ -302,18 +312,46 @@ class NewsExtractor:
         print(f"✅ Found {len(articles)} total recent articles from GNews API")
         return articles
 
-    def get_all_news(self):
-        """Combines news from both RSS and GNews API sources."""
+    async def get_all_news(self, hours_back=24):
+        """Combines news from both RSS and GNews API sources from the last hours_back hours."""
         rss_articles = self.fetch_from_rss()
         api_articles = self.fetch_from_gnews()
         
         all_articles = rss_articles + api_articles
-        print(f"📰 Total news articles found: {len(all_articles)}")
+        print(f"📰 Total news articles found: {len(all_articles)} (last {hours_back} hours)")
         
         # Log breakdown by source
         rss_count = len(rss_articles)
         api_count = len(api_articles)
         print(f"   📊 RSS Articles: {rss_count}")
         print(f"   📊 GNews API Articles: {api_count}")
+        
+        # Enhance articles with full content scraping if scraper is available
+        if self.scraper_agent and self.scraper_agent.is_available():
+            print("🔍 Enhancing articles with full content scraping...")
+            enhanced_articles = []
+            
+            for article in all_articles:
+                url = article.get('link', article.get('url', ''))
+                if url:
+                    try:
+                        # Scrape full content
+                        full_content = await self.scraper_agent.scrape_url(url, "news")
+                        if full_content:
+                            article['full_content'] = full_content
+                            article['content_enhanced'] = True
+                        else:
+                            article['content_enhanced'] = False
+                    except Exception as e:
+                        print(f"⚠️  Error scraping {url}: {e}")
+                        article['content_enhanced'] = False
+                else:
+                    article['content_enhanced'] = False
+                    
+                enhanced_articles.append(article)
+            
+            enhanced_count = sum(1 for a in enhanced_articles if a.get('content_enhanced', False))
+            print(f"   📊 Enhanced Articles: {enhanced_count}/{len(enhanced_articles)}")
+            return enhanced_articles
         
         return all_articles 

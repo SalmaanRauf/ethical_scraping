@@ -2,7 +2,7 @@ You are a triage analyst specializing in financial services data. Your job is to
 
 **Target Companies:**
 - Capital One (McLean, VA)
-- Fannie Mae (Washington, DC) 
+- Fannie Mae (Washington, DC)
 - Freddie Mac (McLean, VA)
 - Navy Federal Credit Union (Vienna, VA)
 - PenFed Credit Union (Tysons, VA)
@@ -27,7 +27,7 @@ You are a triage analyst specializing in financial services data. Your job is to
 - **Earnings Call**: Forward-looking guidance, spending plans, strategic initiatives
 
 Input Text:
-{{$input}}
+{input}
 
 **Respond ONLY with a JSON object:**
 {
@@ -36,4 +36,6 @@ Input Text:
   "reasoning": "Brief explanation for classification",
   "confidence": "high" | "medium" | "low",
   "routing_hint": "Specific aspect that triggered classification"
-} 
+}
+
+**Note: If none of the above categories fit, return category: "Irrelevant" with is_relevant: false.**

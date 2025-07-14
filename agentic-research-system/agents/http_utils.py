@@ -23,6 +23,8 @@ USER_AGENTS = [
 ]
 
 _robots_cache = {}
+_last_request_time = 0
+_min_request_interval = 1.0  # 1 second between requests
 
 def can_fetch(url, user_agent=None):
     """Check robots.txt for the given URL and user agent."""
@@ -41,19 +43,46 @@ def can_fetch(url, user_agent=None):
         return True  # If robots.txt can't be fetched, default to allow
     return rp.can_fetch(user_agent or USER_AGENTS[0], url)
 
-def ethical_get(url, **kwargs):
-    """Make an HTTP GET request with user-agent rotation, robots.txt compliance, and random delay."""
+def ethical_get(url, timeout=30, max_retries=3, **kwargs):
+    """Make an HTTP GET request with user-agent rotation, robots.txt compliance, rate limiting, timeout, and retry logic."""
+    global _last_request_time
+    
+    # Rate limiting
+    current_time = time.time()
+    time_since_last = current_time - _last_request_time
+    if time_since_last < _min_request_interval:
+        sleep_time = _min_request_interval - time_since_last
+        time.sleep(sleep_time)
+    
     user_agent = random.choice(USER_AGENTS)
     headers = kwargs.pop('headers', {})
     headers['User-Agent'] = user_agent
+    
     if not can_fetch(url, user_agent):
         print(f"Blocked by robots.txt: {url}")
         return None
-    delay = random.uniform(1, 5)
-    time.sleep(delay)
-    try:
-        response = requests.get(url, headers=headers, **kwargs)
-        return response
-    except Exception as e:
-        print(f"HTTP request failed: {e}")
-        return None 
+    
+    # Retry logic with exponential backoff
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, headers=headers, timeout=timeout, **kwargs)
+            _last_request_time = time.time()
+            return response
+        except requests.exceptions.Timeout:
+            print(f"Timeout on attempt {attempt + 1} for {url}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)  # Exponential backoff
+                continue
+        except requests.exceptions.RequestException as e:
+            print(f"Request failed on attempt {attempt + 1} for {url}: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)  # Exponential backoff
+                continue
+        except Exception as e:
+            print(f"Unexpected error on attempt {attempt + 1} for {url}: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)  # Exponential backoff
+                continue
+    
+    print(f"All {max_retries} attempts failed for {url}")
+    return None 

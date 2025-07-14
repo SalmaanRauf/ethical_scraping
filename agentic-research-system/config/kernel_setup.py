@@ -45,6 +45,21 @@ project_id = os.getenv("PROJECT_ID")
 
 # Centralized kernel setup
 async def initialize_kernel():
+    # Validate required environment variables
+    missing_vars = []
+    for var_name, var_value in [
+        ("OPENAI_API_KEY", api_key),
+        ("BASE_URL", base_url),
+        ("API_VERSION", api_version),
+        ("MODEL", model),
+        ("PROJECT_ID", project_id)
+    ]:
+        if not var_value:
+            missing_vars.append(var_name)
+    
+    if missing_vars:
+        raise ValueError(f"Missing required environment variables: {missing_vars}")
+    
     kernel = Kernel()
     ATLAS = ATLASClient(api_key, base_url, model, project_id, api_version)
     client = ATLAS.create_client()
@@ -61,8 +76,27 @@ _exec_settings = None
 def get_kernel():
     global _kernel, _exec_settings
     if _kernel is None or _exec_settings is None:
-        loop = asyncio.get_event_loop()
-        _kernel, _exec_settings = loop.run_until_complete(initialize_kernel())
+        try:
+            # Check if we're in an async context
+            try:
+                loop = asyncio.get_running_loop()
+                # We're in an async context, we can't use run_until_complete
+                raise RuntimeError("Cannot initialize kernel in async context. Use get_kernel_async() instead.")
+            except RuntimeError:
+                # No running loop, we can use run_until_complete
+                loop = asyncio.get_event_loop()
+                _kernel, _exec_settings = loop.run_until_complete(initialize_kernel())
+        except Exception as e:
+            print(f"❌ Error initializing kernel: {e}")
+            raise
+    return _kernel, _exec_settings
+
+# For async contexts
+async def get_kernel_async():
+    """Get kernel and execution settings for async contexts."""
+    global _kernel, _exec_settings
+    if _kernel is None or _exec_settings is None:
+        _kernel, _exec_settings = await initialize_kernel()
     return _kernel, _exec_settings
 
 # Test function

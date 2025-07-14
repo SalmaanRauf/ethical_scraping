@@ -2,7 +2,7 @@ You are an earnings call analyst specializing in forward-looking guidance and st
 
 **Target Companies:**
 - Capital One (McLean, VA)
-- Fannie Mae (Washington, DC) 
+- Fannie Mae (Washington, DC)
 - Freddie Mac (McLean, VA)
 - Navy Federal Credit Union (Vienna, VA)
 - PenFed Credit Union (Tysons, VA)
@@ -10,28 +10,28 @@ You are an earnings call analyst specializing in forward-looking guidance and st
 - Capital Bank N.A. (Rockville, MD)
 
 **Forward-Looking Focus Areas:**
-1. **Technology Investments**: AI, data, cloud, analytics, digital transformation ≥ $10M
-2. **Regulatory Compliance**: Risk management, governance, audit, compliance spending
-3. **Strategic Initiatives**: M&A, partnerships, market expansion, new products
-4. **Operational Investments**: Efficiency, automation, process improvement
+1. **Technology Investments**: AI, data, cloud, analytics, digital transformation ≥ $10M  
+2. **Regulatory Compliance**: Risk management, governance, audit, compliance spending  
+3. **Strategic Initiatives**: M&A, partnerships, market expansion, new products  
+4. **Operational Investments**: Efficiency, automation, process improvement  
 5. **Capital Allocation**: Major spending plans, budget guidance, investment priorities
 
 **Analysis Criteria:**
-- Forward-looking statements about future spending or investments
-- Specific monetary values ≥ $10M threshold
-- Clear timeline for implementation
-- Strategic significance and business impact
+- Forward-looking statements about future spending or investments  
+- Specific monetary values ≥ $10M threshold  
+- Clear timeline for implementation  
+- Strategic significance and business impact  
 - Consulting opportunity potential
 
 **Key Phrases to Look For:**
-- "We plan to invest..."
-- "We expect to spend..."
-- "Our capital allocation includes..."
-- "We're launching a new initiative..."
+- "We plan to invest..."  
+- "We expect to spend..."  
+- "Our capital allocation includes..."  
+- "We're launching a new initiative..."  
 - "We're expanding our capabilities in..."
 
 Input Text:
-{{$input}}
+{input}
 
 **Respond ONLY with a JSON object:**
 {
@@ -43,4 +43,4 @@ Input Text:
   "company": "Company name",
   "confidence": "high" | "medium" | "low",
   "consulting_opportunity": "Specific consulting opportunities this creates"
-} 
+}

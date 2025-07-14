@@ -1,79 +1,117 @@
 import json
 import asyncio
 import re
-from typing import List, Dict, Any
-from config.kernel_setup import get_kernel
+import os
+from typing import List, Dict, Any, Optional
+from config.kernel_setup import get_kernel, get_kernel_async
 from semantic_kernel.functions import KernelFunction
+from dataclasses import dataclass
 
 class AnalystAgent:
-    def __init__(self):
-        self.kernel, self.exec_settings = get_kernel()
+    def __init__(self, chunk_size: int = 3000, chunk_overlap: int = 500, max_chunks: int = 10):
+        # Try to get kernel synchronously first
+        try:
+            self.kernel, self.exec_settings = get_kernel()
+        except RuntimeError:
+            # If we're in an async context, we'll need to initialize later
+            self.kernel = None
+            self.exec_settings = None
+        
         self.functions = {}
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self.max_chunks = max_chunks
         self._load_functions()
         
-        # Configuration for intelligent text processing
-        self.chunk_size = 3000  # Characters per chunk
-        self.chunk_overlap = 500  # Overlap between chunks to avoid missing context
-        self.max_chunks = 10  # Maximum chunks to process per document
-
+    async def _ensure_kernel_initialized(self):
+        """Ensure kernel is initialized, especially in async contexts."""
+        if self.kernel is None or self.exec_settings is None:
+            self.kernel, self.exec_settings = await get_kernel_async()
+            # Reload functions with the new kernel
+            self._load_functions()
+        
     def _load_functions(self):
-        """Load all Semantic Kernel functions."""
-        try:
-            # Load triage function
-            self.functions['triage'] = self.kernel.add_function(
-                prompt_template_file="sk_functions/Triage/skprompt.txt",
-                function_name="triage",
-                description="Categorize and filter data for relevance"
-            )
-            
-            # Load financial specialist function
-            self.functions['financial'] = self.kernel.add_function(
-                prompt_template_file="sk_functions/FinancialSpecialist/skprompt.txt",
-                function_name="financial_specialist",
-                description="Detect financial events over $10M"
-            )
-            
-            # Load procurement specialist function
-            self.functions['procurement'] = self.kernel.add_function(
-                prompt_template_file="sk_functions/ProcurementSpecialist/skprompt.txt",
-                function_name="procurement_specialist",
-                description="Analyze procurement notices"
-            )
-            
-            # Load earnings call specialist function
-            self.functions['earnings'] = self.kernel.add_function(
-                prompt_template_file="sk_functions/EarningsCallSpecialist/skprompt.txt",
-                function_name="earnings_specialist",
-                description="Analyze earnings call transcripts"
-            )
-            
-            # Load insight generator function
-            self.functions['insight'] = self.kernel.add_function(
-                prompt_template_file="sk_functions/InsightGenerator/skprompt.txt",
-                function_name="insight_generator",
-                description="Generate structured insights"
-            )
-            
-            print("✅ All Semantic Kernel functions loaded successfully")
-            
-        except Exception as e:
-            print(f"❌ Error loading functions: {e}")
-            raise
+        """Load all Semantic Kernel functions using the correct 1.34.0 API."""
+        # Get the correct path to sk_functions directory
+        sk_dir = os.path.join(os.path.dirname(__file__), "..", "sk_functions")
+        
+        prompt_files = {
+            "triage": "Triage_CategoryRouting_prompt.txt",
+            "financial": "FinancialEvent_Detection_prompt.txt", 
+            "procurement": "OpportunityIdent_skprompt.txt",
+            "earnings": "EarningsCall_GuidanceAnalysis_prompt.txt",
+            "insight": "StrategicInsight_Generation_prompt.txt"
+        }
+
+        for name, fname in prompt_files.items():
+            path = os.path.normpath(os.path.join(sk_dir, fname))
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    template = f.read()
+                
+                # Create function with proper parameter names
+                func = KernelFunction.from_prompt(
+                    prompt=template,
+                    function_name=name,
+                    plugin_name="analyst_plugin",
+                    parameter_names=["input"],
+                    description=f"{name} analysis function"
+                )
+                self.functions[name] = func
+                
+                if self.kernel:
+                    try:
+                        self.kernel.add_function(func)
+                    except Exception as ex:
+                        print(f"⚠️  Failed to add SK function '{name}': {ex}")
+                        
+            except FileNotFoundError:
+                print(f"❌ Prompt file not found: {path}")
+            except Exception as e:
+                print(f"❌ Error loading prompt '{name}' from {path}: {e}")
+                # Continue loading other functions even if one fails
+        
+        print(f"✅ Loaded {len(self.functions)} Semantic Kernel functions successfully")
 
     def _create_intelligent_chunks(self, text: str, chunk_size: int = None, overlap: int = None) -> List[str]:
         """
         Create intelligent chunks that preserve context and avoid cutting in the middle of important information.
         """
-        if not text or len(text) <= chunk_size:
-            return [text] if text else []
+        if not text:
+            return []
+        
+        # Memory safety checks
+        if len(text) > 10_000_000:  # 10MB limit
+            print(f"⚠️  Text too large ({len(text)} chars), truncating to 10MB")
+            text = text[:10_000_000]
+        
+        if len(text) <= chunk_size:
+            return [text]
         
         chunk_size = chunk_size or self.chunk_size
         overlap = overlap or self.chunk_overlap
+        
+        # Monitor memory usage (optional - requires psutil)
+        try:
+            import psutil
+            import os
+            process = psutil.Process(os.getpid())
+            initial_memory = process.memory_info().rss
+        except ImportError:
+            process = None
+            initial_memory = 0
         
         chunks = []
         start = 0
         
         while start < len(text) and len(chunks) < self.max_chunks:
+            # Check memory usage periodically
+            if process and len(chunks) % 10 == 0:
+                current_memory = process.memory_info().rss
+                if current_memory - initial_memory > 500_000_000:  # 500MB increase
+                    print("⚠️  Memory usage too high, stopping chunk creation")
+                    break
+            
             end = start + chunk_size
             
             # If this isn't the last chunk, try to find a good break point
@@ -170,44 +208,45 @@ class AnalystAgent:
         
         print(f"🔍 Analyzing {len(prioritized_chunks)} prioritized chunks (from {len(chunks)} total)")
         
-        # Map: Analyze each chunk
-        chunk_results = []
+        # PARALLEL PROCESSING
+        tasks = []
         for i, chunk in enumerate(prioritized_chunks):
-            try:
-                print(f"   📄 Analyzing chunk {i+1}/{len(prioritized_chunks)} ({len(chunk)} chars)")
-                
-                result = await self.kernel.invoke_function(
-                    self.functions[analysis_function],
-                    input_str=chunk
-                )
-                
-                # Parse result
-                try:
-                    parsed_result = json.loads(str(result))
-                    if parsed_result.get('event_found', False) or parsed_result.get('is_relevant', False):
-                        chunk_results.append({
-                            'chunk_index': i,
-                            'chunk_text': chunk[:200] + "..." if len(chunk) > 200 else chunk,
-                            'result': parsed_result,
-                            'key_terms': self._extract_key_terms(chunk)
-                        })
-                        print(f"      ✅ Found relevant information in chunk {i+1}")
-                    else:
-                        print(f"      ⚪ No relevant information in chunk {i+1}")
-                except json.JSONDecodeError:
-                    print(f"      ⚠️  Could not parse result from chunk {i+1}")
-                    continue
-                    
-            except Exception as e:
-                print(f"      ❌ Error analyzing chunk {i+1}: {e}")
-                continue
+            tasks.append(self._analyze_single_chunk(i, chunk, analysis_function))
         
-        # Reduce: Synthesize results from all chunks
-        if chunk_results:
-            print(f"   🔄 Synthesizing results from {len(chunk_results)} relevant chunks...")
-            return self._synthesize_chunk_results(chunk_results, analysis_function)
+        chunk_results = []
+        try:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    print(f"❌ Task {i} failed: {result}")
+                elif result:
+                    chunk_results.append(result)
+        except Exception as e:
+            print(f"❌ Gather operation failed: {e}")
         
-        return []
+        return self._synthesize_chunk_results(chunk_results, analysis_function)
+
+    async def _analyze_single_chunk(self, i: int, chunk: str, analysis_function: str) -> Optional[Dict[str, Any]]:
+        try:
+            result = await self.kernel.invoke(
+                self.functions[analysis_function],
+                input_str=chunk
+            )
+            
+            # Use safe JSON parsing
+            parsed_result = self._safe_json_parse(result, f"chunk_analysis_{analysis_function}")
+            if not parsed_result:
+                return None
+            if parsed_result.get('event_found', False) or parsed_result.get('is_relevant', False):
+                return {
+                    'chunk_index': i,
+                    'chunk_text': chunk[:200] + "..." if len(chunk) > 200 else chunk,
+                    'result': parsed_result,
+                    'key_terms': self._extract_key_terms(chunk)
+                }
+        except Exception as e:
+            print(f"⚠️  Error analyzing chunk {i}: {e}")
+        return None
 
     def _synthesize_chunk_results(self, chunk_results: List[Dict[str, Any]], analysis_type: str) -> List[Dict[str, Any]]:
         """
@@ -216,62 +255,55 @@ class AnalystAgent:
         if not chunk_results:
             return []
         
-        # For financial analysis, look for the highest value event
-        if analysis_type == 'financial':
-            max_value = 0
-            best_result = None
-            
-            for chunk_result in chunk_results:
-                result = chunk_result['result']
-                value_usd = result.get('value_usd', 0)
-                if value_usd and value_usd > max_value:
-                    max_value = value_usd
-                    best_result = result
-            
-            if best_result and max_value >= 10_000_000:
-                return [{
-                    'synthesized_result': best_result,
-                    'source_chunks': len(chunk_results),
-                    'max_value': max_value,
-                    'analysis_type': 'financial'
-                }]
+        # For certain types, consider all relevant results, not just first
+        if analysis_type in ['procurement', 'earnings']:
+            # Return all relevant results instead of just the first
+            return [result['result'] for result in chunk_results if result['result'].get('event_found', False)]
+        else:
+            # For other types, keep current behavior
+            return [chunk_results[0]['result']] if chunk_results else []
+
+    def _safe_json_parse(self, result, context="unknown") -> Optional[Dict]:
+        """Safely parse JSON from various result types."""
+        content = None
         
-        # For procurement analysis, combine all relevant notices
-        elif analysis_type == 'procurement':
-            relevant_results = []
-            for chunk_result in chunk_results:
-                result = chunk_result['result']
-                if result.get('is_relevant', False) and result.get('value_usd', 0) >= 10_000_000:
-                    relevant_results.append(result)
-            
-            if relevant_results:
-                return [{
-                    'synthesized_result': relevant_results[0],  # Take the first one as representative
-                    'source_chunks': len(chunk_results),
-                    'total_relevant': len(relevant_results),
-                    'analysis_type': 'procurement'
-                }]
+        if hasattr(result, 'content'):
+            content = result.content
+        elif hasattr(result, 'inner_content'):
+            content = result.inner_content
+        else:
+            content = str(result)
         
-        # For earnings analysis, combine all guidance found
-        elif analysis_type == 'earnings':
-            guidance_results = []
-            for chunk_result in chunk_results:
-                result = chunk_result['result']
-                if result.get('guidance_found', False) and result.get('value_usd', 0) >= 10_000_000:
-                    guidance_results.append(result)
-            
-            if guidance_results:
-                return [{
-                    'synthesized_result': guidance_results[0],  # Take the first one as representative
-                    'source_chunks': len(chunk_results),
-                    'total_guidance': len(guidance_results),
-                    'analysis_type': 'earnings'
-                }]
+        if not content:
+            print(f"⚠️  Empty content for JSON parsing in {context}")
+            return None
         
-        return []
+        try:
+            # Validate content length
+            if len(content) > 1_000_000:  # 1MB limit
+                print(f"❌ JSON content too large in {context}")
+                return None
+            
+            parsed = json.loads(content)
+            
+            # Validate structure
+            if not isinstance(parsed, dict):
+                print(f"❌ JSON is not a dictionary in {context}")
+                return None
+            
+            return parsed
+        
+        except json.JSONDecodeError as e:
+            print(f"❌ JSON decode error in {context}: {e}")
+            print(f"📋 Problematic content: {content[:200]}...")
+            return None
+        except Exception as e:
+            print(f"❌ Unexpected error parsing JSON in {context}: {e}")
+            return None
 
     async def triage_data(self, data_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Triage data to filter out irrelevant items using intelligent text processing."""
+        await self._ensure_kernel_initialized()
         relevant_items = []
         
         for item in data_items:
@@ -290,18 +322,16 @@ class AnalystAgent:
                 
                 # For short texts, analyze directly
                 if len(text) <= self.chunk_size:
-                    result = await self.kernel.invoke_function(
+                    result = await self.kernel.invoke(
                         self.functions['triage'],
                         input_str=text
                     )
                     
-                    try:
-                        triage_result = json.loads(str(result))
-                        if triage_result.get('is_relevant', False):
-                            item['triage_result'] = triage_result
-                            relevant_items.append(item)
-                    except json.JSONDecodeError:
-                        continue
+                    # Use safe JSON parsing
+                    triage_result = self._safe_json_parse(result, "triage_analysis")
+                    if triage_result and triage_result.get('is_relevant', False):
+                        item['triage_result'] = triage_result
+                        relevant_items.append(item)
                 else:
                     # For long texts, use intelligent chunking
                     chunks = self._create_intelligent_chunks(text)
@@ -309,21 +339,19 @@ class AnalystAgent:
                     
                     # Analyze each prioritized chunk
                     for chunk in prioritized_chunks:
-                        result = await self.kernel.invoke_function(
+                        result = await self.kernel.invoke(
                             self.functions['triage'],
                             input_str=chunk
                         )
                         
-                        try:
-                            triage_result = json.loads(str(result))
-                            if triage_result.get('is_relevant', False):
-                                item['triage_result'] = triage_result
-                                item['analyzed_chunks'] = len(chunks)
-                                relevant_items.append(item)
-                                print(f"✅ Found relevant content in {len(chunks)}-chunk document")
-                                break
-                        except json.JSONDecodeError:
-                            continue
+                        # Use safe JSON parsing
+                        triage_result = self._safe_json_parse(result, "triage_chunk_analysis")
+                        if triage_result and triage_result.get('is_relevant', False):
+                            item['triage_result'] = triage_result
+                            item['analyzed_chunks'] = len(chunks)
+                            relevant_items.append(item)
+                            print(f"✅ Found relevant content in {len(chunks)}-chunk document")
+                            break
                     
             except Exception as e:
                 print(f"Error during triage for item: {e}")
@@ -334,6 +362,7 @@ class AnalystAgent:
 
     async def analyze_financial_events(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Analyze items for financial events using intelligent chunking."""
+        await self._ensure_kernel_initialized()
         financial_events = []
         
         for item in items:
@@ -351,20 +380,17 @@ class AnalystAgent:
                     # Use intelligent chunking for analysis
                     if len(text) <= self.chunk_size:
                         # Short text - analyze directly
-                        result = await self.kernel.invoke_function(
+                        result = await self.kernel.invoke(
                             self.functions['financial'],
                             input_str=text
                         )
                         
-                        try:
-                            financial_result = json.loads(str(result))
-                            if financial_result.get('event_found', False):
-                                value_usd = financial_result.get('value_usd', 0)
-                                if value_usd and value_usd >= 10_000_000:
-                                    item['financial_analysis'] = financial_result
-                                    financial_events.append(item)
-                        except json.JSONDecodeError:
-                            continue
+                        financial_result = self._safe_json_parse(result, "financial_analysis")
+                        if financial_result and financial_result.get('event_found', False):
+                            value_usd = financial_result.get('value_usd', 0)
+                            if value_usd is not None and value_usd >= 10_000_000:
+                                item['financial_analysis'] = financial_result
+                                financial_events.append(item)
                     else:
                         # Long text - use map-reduce pattern
                         chunks = self._create_intelligent_chunks(text)
@@ -375,7 +401,7 @@ class AnalystAgent:
                             synthesized = chunk_results[0]
                             if synthesized['synthesized_result'].get('event_found', False):
                                 value_usd = synthesized['synthesized_result'].get('value_usd', 0)
-                                if value_usd and value_usd >= 10_000_000:
+                                if value_usd is not None and value_usd >= 10_000_000:
                                     item['financial_analysis'] = synthesized['synthesized_result']
                                     item['analysis_metadata'] = {
                                         'chunks_analyzed': synthesized['source_chunks'],
@@ -393,6 +419,7 @@ class AnalystAgent:
 
     async def analyze_procurement(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Analyze procurement notices using intelligent chunking."""
+        await self._ensure_kernel_initialized()
         procurement_events = []
         
         for item in items:
@@ -406,20 +433,17 @@ class AnalystAgent:
                     # Use intelligent chunking for analysis
                     if len(text) <= self.chunk_size:
                         # Short text - analyze directly
-                        result = await self.kernel.invoke_function(
+                        result = await self.kernel.invoke(
                             self.functions['procurement'],
                             input_str=text
                         )
                         
-                        try:
-                            procurement_result = json.loads(str(result))
-                            if procurement_result.get('is_relevant', False):
-                                value_usd = procurement_result.get('value_usd', 0)
-                                if value_usd and value_usd >= 10_000_000:
-                                    item['procurement_analysis'] = procurement_result
-                                    procurement_events.append(item)
-                        except json.JSONDecodeError:
-                            continue
+                        procurement_result = self._safe_json_parse(result, "procurement_analysis")
+                        if procurement_result and procurement_result.get('is_relevant', False):
+                            value_usd = procurement_result.get('value_usd', 0)
+                            if value_usd is not None and value_usd >= 10_000_000:
+                                item['procurement_analysis'] = procurement_result
+                                procurement_events.append(item)
                     else:
                         # Long text - use map-reduce pattern
                         chunks = self._create_intelligent_chunks(text)
@@ -430,7 +454,7 @@ class AnalystAgent:
                             synthesized = chunk_results[0]
                             if synthesized['synthesized_result'].get('is_relevant', False):
                                 value_usd = synthesized['synthesized_result'].get('value_usd', 0)
-                                if value_usd and value_usd >= 10_000_000:
+                                if value_usd is not None and value_usd >= 10_000_000:
                                     item['procurement_analysis'] = synthesized['synthesized_result']
                                     item['analysis_metadata'] = {
                                         'chunks_analyzed': synthesized['source_chunks'],
@@ -448,6 +472,7 @@ class AnalystAgent:
 
     async def analyze_earnings_calls(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Analyze earnings call transcripts using intelligent chunking."""
+        await self._ensure_kernel_initialized()
         earnings_events = []
         
         for item in items:
@@ -462,20 +487,17 @@ class AnalystAgent:
                     # Use intelligent chunking for analysis
                     if len(text) <= self.chunk_size:
                         # Short text - analyze directly
-                        result = await self.kernel.invoke_function(
+                        result = await self.kernel.invoke(
                             self.functions['earnings'],
                             input_str=text
                         )
                         
-                        try:
-                            earnings_result = json.loads(str(result))
-                            if earnings_result.get('guidance_found', False):
-                                value_usd = earnings_result.get('value_usd', 0)
-                                if value_usd and value_usd >= 10_000_000:
-                                    item['earnings_analysis'] = earnings_result
-                                    earnings_events.append(item)
-                        except json.JSONDecodeError:
-                            continue
+                        earnings_result = self._safe_json_parse(result, "earnings_analysis")
+                        if earnings_result and earnings_result.get('guidance_found', False):
+                            value_usd = earnings_result.get('value_usd', 0)
+                            if value_usd is not None and value_usd >= 10_000_000:
+                                item['earnings_analysis'] = earnings_result
+                                earnings_events.append(item)
                     else:
                         # Long text - use map-reduce pattern
                         chunks = self._create_intelligent_chunks(text)
@@ -486,7 +508,7 @@ class AnalystAgent:
                             synthesized = chunk_results[0]
                             if synthesized['synthesized_result'].get('guidance_found', False):
                                 value_usd = synthesized['synthesized_result'].get('value_usd', 0)
-                                if value_usd and value_usd >= 10_000_000:
+                                if value_usd is not None and value_usd >= 10_000_000:
                                     item['earnings_analysis'] = synthesized['synthesized_result']
                                     item['analysis_metadata'] = {
                                         'chunks_analyzed': synthesized['source_chunks'],
@@ -504,6 +526,7 @@ class AnalystAgent:
 
     async def generate_insights(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Generate insights for all events."""
+        await self._ensure_kernel_initialized()
         insights = []
         
         for event in events:
@@ -525,19 +548,18 @@ class AnalystAgent:
                     insight_data.update(event['earnings_analysis'])
                 
                 # Generate insight
-                result = await self.kernel.invoke_function(
+                result = await self.kernel.invoke(
                     self.functions['insight'],
                     input_str=json.dumps(insight_data)
                 )
                 
-                # Parse result
-                try:
-                    insight_result = json.loads(str(result))
+                # Parse result safely
+                insight_result = self._safe_json_parse(result, "insight_generation")
+                if insight_result:
                     event['insights'] = insight_result
                     insights.append(event)
-                except json.JSONDecodeError:
+                else:
                     print(f"Warning: Could not parse insight for event: {event.get('title', 'Unknown')}")
-                    continue
                     
             except Exception as e:
                 print(f"Error generating insight: {e}")

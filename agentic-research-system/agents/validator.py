@@ -1,7 +1,10 @@
 import os
 import requests
+import time
+import threading
 from typing import Dict, Any, List
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from dotenv import load_dotenv
 import re
 
@@ -12,11 +15,32 @@ class Validator:
         self.api_key = os.getenv("GOOGLE_SEARCH_API_KEY")
         self.cse_id = os.getenv("GOOGLE_CSE_ID")
         
+        # Validate API credentials
+        if not self.api_key or len(self.api_key) < 10:
+            raise ValueError("Invalid or missing Google Search API key")
+        if not self.cse_id or len(self.cse_id) < 10:
+            raise ValueError("Invalid or missing Google Custom Search Engine ID")
+        
+        # Rate limiting for Google Search API
+        self.last_api_call = 0
+        self.min_api_interval = 1.0  # 1 second between API calls
+        self._rate_limit_lock = threading.Lock()  # Thread-safe rate limiting
+        
         # Target companies for validation (final, corrected)
         self.target_companies = [
             "Capital One", "Fannie Mae", "Freddie Mac", "Navy Federal Credit Union", 
             "PenFed Credit Union", "EagleBank", "Capital Bank N.A."
         ]
+
+    def _rate_limit(self):
+        """Thread-safe rate limiting for API calls."""
+        with self._rate_limit_lock:
+            current_time = time.time()
+            time_since_last = current_time - self.last_api_call
+            if time_since_last < self.min_api_interval:
+                sleep_time = self.min_api_interval - time_since_last
+                time.sleep(sleep_time)
+            self.last_api_call = time.time()
 
     def validate_event_internal(self, event_headline: str, company_name: str, internal_data: Dict[str, List]) -> bool:
         """
@@ -152,11 +176,16 @@ class Validator:
             print("⚠️  Google Search API credentials not found. Skipping external validation.")
             return False
         
+        # Thread-safe rate limiting
+        self._rate_limit()
+        
         try:
             service = build("customsearch", "v1", developerKey=self.api_key)
             
-            # Create search query
+            # Create search query with length validation
             query = f'"{event_headline}" "{company_name}"'
+            if len(query) > 200:  # Google API limit
+                query = f'"{event_headline[:50]}" "{company_name}"'
             
             # Search for recent results (last month)
             res = service.cse().list(
@@ -166,41 +195,58 @@ class Validator:
                 dateRestrict='m1'  # Restrict to last month
             ).execute()
             
-            if 'items' not in res or len(res['items']) == 0:
+            # Validate response size
+            if 'items' not in res:
+                print(f"❌ No search results found for: {event_headline}")
+                return False
+            
+            items = res['items']
+            if len(items) == 0:
                 print(f"❌ No external confirmation found for: {event_headline}")
                 return False
             
-            # Extract key terms for validation
-            key_terms = self._extract_key_terms(event_headline, company_name)
-            print(f"🔍 Analyzing {len(res['items'])} search results with key terms: {key_terms}")
+            # Limit response processing to prevent memory issues
+            max_items_to_process = min(len(items), 10)  # Process max 10 items
+            items_to_process = items[:max_items_to_process]
             
-            # Analyze each search result
+            # Extract key terms for validation with memory limits
+            key_terms = self._extract_key_terms(event_headline, company_name)
+            print(f"🔍 Analyzing {len(items_to_process)} search results with key terms: {key_terms}")
+            
+            # Analyze each search result with memory safety
             relevant_results = []
-            for i, result in enumerate(res['items']):
-                analysis = self._analyze_search_result_relevance(result, key_terms, event_headline, company_name)
-                
-                print(f"   Result {i+1}: {analysis['title'][:50]}...")
-                print(f"      Company matches: {analysis['company_matches']}, Headline matches: {analysis['headline_matches']}")
-                print(f"      Relevance score: {analysis['relevance_score']:.2f}, Recent date: {analysis['recent_date_found']}")
-                print(f"      Relevant: {'✅' if analysis['is_relevant'] else '❌'}")
-                
-                if analysis['is_relevant']:
-                    relevant_results.append(analysis)
+            for i, result in enumerate(items_to_process):
+                try:
+                    analysis = self._analyze_search_result_relevance(result, key_terms, event_headline, company_name)
+                    
+                    print(f"   Result {i+1}: {analysis['title'][:50]}...")
+                    print(f"      Company matches: {analysis['company_matches']}, Headline matches: {analysis['headline_matches']}")
+                    print(f"      Relevance score: {analysis['relevance_score']:.2f}, Recent date: {analysis['recent_date_found']}")
+                    print(f"      Relevant: {'✅' if analysis['is_relevant'] else '❌'}")
+                    
+                    if analysis['is_relevant']:
+                        relevant_results.append(analysis)
+                except Exception as e:
+                    print(f"⚠️  Error analyzing result {i+1}: {e}")
+                    continue
             
             # Determine validation result
             if len(relevant_results) >= 2:
                 print(f"✅ Externally validated via Google Search: {event_headline}")
-                print(f"   Found {len(relevant_results)} highly relevant sources out of {len(res['items'])} total")
+                print(f"   Found {len(relevant_results)} highly relevant sources out of {len(items_to_process)} total")
                 return True
             elif len(relevant_results) == 1:
                 print(f"⚠️  Weak external validation: {event_headline}")
-                print(f"   Found only 1 relevant source out of {len(res['items'])} total")
+                print(f"   Found only 1 relevant source out of {len(items_to_process)} total")
                 return False  # Require at least 2 relevant sources
             else:
                 print(f"❌ No relevant external confirmation found for: {event_headline}")
-                print(f"   Found 0 relevant sources out of {len(res['items'])} total")
+                print(f"   Found 0 relevant sources out of {len(items_to_process)} total")
                 return False
                 
+        except HttpError as e:
+            print(f"❌ Google Search API error: {e}")
+            return False
         except Exception as e:
             print(f"❌ Google Search validation failed: {e}")
             return False

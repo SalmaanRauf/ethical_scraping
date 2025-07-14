@@ -1,15 +1,17 @@
 import os
+import asyncio
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import re
 from agents.http_utils import ethical_get
 
 class SAMExtractor:
-    def __init__(self):
+    def __init__(self, scraper_agent=None):
         # Load environment variables
         load_dotenv()
         self.api_key = os.getenv("SAM_API_KEY")
         self.base_url = "https://api.sam.gov/prod/opportunities/v2/search"
+        self.scraper_agent = scraper_agent
         
         # Target companies to monitor (final, corrected)
         self.target_companies = [
@@ -138,7 +140,7 @@ class SAMExtractor:
             print(f"❌ Error fetching notice details: {e}")
             return None
 
-    def fetch_notices(self, keywords=["RFP", "SOW", "consultant", "financial services"], max_notices=20):
+    async def fetch_notices(self, keywords=["RFP", "SOW", "consultant", "financial services"], max_notices=20):
         """Fetches procurement notices from SAM.gov and filters them."""
         if not self.api_key:
             print("Error: SAM_API_KEY not found in environment variables.")
@@ -159,7 +161,14 @@ class SAMExtractor:
 
         try:
             print(f"Fetching SAM.gov notices from {yesterday} to {today}...")
-            response = ethical_get(self.base_url, params=params, timeout=30)
+            
+            # Run the sync HTTP request in an executor to avoid blocking
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None, 
+                lambda: ethical_get(self.base_url, params=params, timeout=30)
+            )
+            
             if response is None:
                 print("Request blocked or failed by ethical_get.")
                 return []
@@ -179,7 +188,22 @@ class SAMExtractor:
                 # Check if description is a URL (needs secondary fetch)
                 if description_url.startswith('http'):
                     print(f"📄 Fetching details for: {title[:50]}...")
-                    full_description = self.fetch_notice_details(description_url)
+                    
+                    # Try scraper first if available
+                    if self.scraper_agent and self.scraper_agent.is_available():
+                        try:
+                            scraped_content = await self.scraper_agent.scrape_url(description_url, "procurement")
+                            if scraped_content:
+                                full_description = scraped_content
+                                print(f"✅ Enhanced procurement notice with scraped content")
+                            else:
+                                full_description = self.fetch_notice_details(description_url)
+                        except Exception as scrape_error:
+                            print(f"⚠️  Scraping failed, falling back to API: {scrape_error}")
+                            full_description = self.fetch_notice_details(description_url)
+                    else:
+                        full_description = self.fetch_notice_details(description_url)
+                        
                     if full_description is None:
                         continue
                 else:
@@ -230,11 +254,16 @@ class SAMExtractor:
             
         except Exception as e:
             print(f"Error fetching data from SAM.gov: {e}")
+            # Check for rate limiting (HTTP 429)
+            if hasattr(e, 'response') and e.response.status_code == 429:
+                print("⚠️  Rate limited by SAM.gov API. Consider implementing exponential backoff.")
             return []
 
-    def get_all_notices(self):
-        """Main method to get all relevant procurement notices."""
-        return self.fetch_notices()
+    async def get_all_notices(self, days_back=7, keywords=None):
+        """Main method to get all relevant procurement notices from the last days_back days."""
+        if keywords is None:
+            keywords = ["RFP", "SOW", "consultant", "financial services"]
+        return await self.fetch_notices(keywords=keywords, max_notices=20)
 
     def test_api_structure(self, max_test_notices=1):
         """Test the API response structure to understand the correct data paths."""

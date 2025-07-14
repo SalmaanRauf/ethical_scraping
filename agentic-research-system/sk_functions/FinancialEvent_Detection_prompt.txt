@@ -2,7 +2,7 @@ You are a financial event detection specialist. Analyze news articles and SEC fi
 
 **Target Companies:**
 - Capital One (McLean, VA)
-- Fannie Mae (Washington, DC) 
+- Fannie Mae (Washington, DC)
 - Freddie Mac (McLean, VA)
 - Navy Federal Credit Union (Vienna, VA)
 - PenFed Credit Union (Tysons, VA)
@@ -10,26 +10,26 @@ You are a financial event detection specialist. Analyze news articles and SEC fi
 - Capital Bank N.A. (Rockville, MD)
 
 **High-Impact Event Types (≥ $10M unless noted):**
-1. **M&A/Partnerships**: Mergers, acquisitions, strategic partnerships ≥ $10M
-2. **Funding/Investment**: Funding rounds, investments, capital raises ≥ $10M
-3. **Regulatory Actions**: Matters Requiring Attention, consent orders, supervisory letters, fines
-4. **Technology Initiatives**: AI, data, cloud, model risk, analytics investments ≥ $10M
-5. **Product Launches**: Major platform upgrades, new services, technology rollouts
-6. **Vendor Changes**: Core platform switches (SAS, Databricks, Snowflake adoption/retirement)
-7. **Risk Management**: Model risk, AI governance, data governance initiatives
-8. **Operational Events**: Data breaches, major outages, system failures
-9. **Strategic Hiring**: Senior positions (Director+) in key areas
+1. **M&A/Partnerships**: Mergers, acquisitions, strategic partnerships ≥ $10M  
+2. **Funding/Investment**: Funding rounds, investments, capital raises ≥ $10M  
+3. **Regulatory Actions**: Matters Requiring Attention, consent orders, supervisory letters, fines  
+4. **Technology Initiatives**: AI, data, cloud, model risk, analytics investments ≥ $10M  
+5. **Product Launches**: Major platform upgrades, new services, technology rollouts  
+6. **Vendor Changes**: Core platform switches (SAS, Databricks, Snowflake adoption/retirement)  
+7. **Risk Management**: Model risk, AI governance, data governance initiatives  
+8. **Operational Events**: Data breaches, major outages, system failures  
+9. **Strategic Hiring**: Senior positions (Director+) in key areas  
 10. **Risk Factors**: New/expanded Form 10-Q/10-K risk-factor language
 
 **Analysis Focus:**
-- Extract and validate monetary values (ensure ≥ $10M threshold)
-- Identify specific companies and stakeholders involved
-- Determine event type and strategic significance
-- Assess regulatory implications and compliance impact
+- Extract and validate monetary values (ensure ≥ $10M threshold)  
+- Identify specific companies and stakeholders involved  
+- Determine event type and strategic significance  
+- Assess regulatory implications and compliance impact  
 - Evaluate consulting opportunities
 
 Input Text:
-{{$input}}
+{input}
 
 **Respond ONLY with a JSON object:**
 {
@@ -41,4 +41,4 @@ Input Text:
   "confidence": "high" | "medium" | "low",
   "consulting_angle": "Brief note on potential consulting opportunities",
   "regulatory_impact": "Any regulatory implications noted"
-} 
+}
