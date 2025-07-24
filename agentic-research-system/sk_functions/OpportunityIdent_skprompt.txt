@@ -30,9 +30,13 @@ You are a procurement specialist focused on identifying high-value consulting op
 - Evaluate consulting opportunity fit
 
 Input Text:
-{input}
+{{$input}}
 
-**Respond ONLY with a JSON object:**
+Respond ONLY with a valid JSON object and NOTHING ELSE.
+Do NOT include code fences (```) or language tags.
+Do NOT include any explanations, preambles, or formatting before or after the JSON.
+All keys and string values should be double-quoted. Booleans/integers should be unquoted. Reply with nothing outside the opening and closing curly braces.
+
 {
   "is_relevant": true/false,
   "title": "Project title or RFP name",

@@ -1,0 +1,319 @@
+# 🚀 CHAINLIT MIGRATION GUIDE: Adding New Functionality to Your Existing Project
+
+## **Overview**
+This guide will help you add the new Chainlit interface, single company workflow, and enhanced functionality to your existing project. You'll be adding these key new features:
+
+1. **Chainlit Web Interface** - User-friendly web UI
+2. **Single Company Workflow** - Individual company briefings
+3. **Enhanced Profile Integration** - Proprietary data in analysis
+4. **Improved Error Handling** - Robust error management
+5. **Updated Configuration** - Date requirements and quotas
+
+---
+
+## **📋 STEP-BY-STEP MIGRATION INSTRUCTIONS**
+
+### **Step 1: Update Dependencies**
+```bash
+# Add these to your existing requirements.txt
+chainlit>=1.0.0
+fuzzywuzzy>=0.18.0
+python-Levenshtein>=0.21.0
+asyncio-throttle>=1.0.2
+```
+
+### **Step 2: Create New Directory Structure**
+```bash
+# Create these new directories in your project root
+mkdir -p chainlit_app
+mkdir -p services
+mkdir -p data/company_profiles
+mkdir -p sk_functions
+```
+
+### **Step 3: Add New Configuration Files**
+
+**File: `config/company_config.py`**
+```python
+# Company name mappings for fuzzy matching
+COMPANY_SLUGS = {
+    "capital one": "Capital_One",
+    "capitalone": "Capital_One",
+    "fannie mae": "Fannie_Mae",
+    "fanniemae": "Fannie_Mae",
+    "freddie mac": "Freddie_Mac",
+    "freddiemac": "Freddie_Mac",
+    "navy federal": "Navy_Federal_Credit_Union",
+    "navyfederal": "Navy_Federal_Credit_Union",
+    "penfed": "PenFed_Credit_Union",
+    "penfed credit union": "PenFed_Credit_Union",
+    "eagle bank": "Eagle_Bank",
+    "eaglebank": "Eagle_Bank",
+    "capital bank": "Capital_Bank_N.A.",
+    "capitalbank": "Capital_Bank_N.A."
+}
+
+COMPANY_DISPLAY_NAMES = {
+    "Capital_One": "Capital One Financial Corporation",
+    "Fannie_Mae": "Federal National Mortgage Association",
+    "Freddie_Mac": "Federal Home Loan Mortgage Corporation",
+    "Navy_Federal_Credit_Union": "Navy Federal Credit Union",
+    "PenFed_Credit_Union": "PenFed Credit Union",
+    "Eagle_Bank": "EagleBank",
+    "Capital_Bank_N.A.": "Capital Bank N.A."
+}
+```
+
+**Update: `config/config.py`**
+```python
+# Add these lines to your existing config
+SEC_DAYS_BACK = 90  # 3 months for SEC filings
+SAM_DAYS_BACK = 60  # 2 months for SAM.gov notices
+NEWS_HOURS_BACK = 168  # 7 days for news articles
+```
+
+### **Step 4: Add New Service Files**
+
+**File: `services/profile_loader.py`**
+- Copy the complete profile loader implementation
+- Handles loading company profiles and regulatory feeds
+
+**File: `services/error_handler.py`**
+- Copy the complete error handler implementation
+- Provides centralized error handling and logging
+
+**File: `services/app_context.py`**
+- Copy the complete app context implementation
+- Manages shared services and agents
+
+**File: `services/progress_handler.py`**
+- Copy the progress handler implementation
+- Handles progress updates for Chainlit
+
+### **Step 5: Add New Agent Files**
+
+**File: `agents/company_resolver.py`**
+- Copy the complete company resolver implementation
+- Handles fuzzy matching of company names
+
+**File: `agents/single_company_workflow.py`**
+- Copy the complete single company workflow implementation
+- Orchestrates individual company briefings
+
+**Update: `agents/analyst_agent.py`**
+- Replace with the complete analyst agent implementation
+- Includes all analysis functions and company profile integration
+
+**Update: `agents/data_consolidator.py`**
+- Update to handle both new and legacy profile formats
+- Add the `_get_all_company_names()` method fix
+
+### **Step 6: Add Chainlit Interface**
+
+**File: `chainlit_app/main.py`**
+- Copy the complete Chainlit main implementation
+- Handles user interactions and workflow orchestration
+
+**File: `chainlit_app/chainlit.md`**
+- Copy the Chainlit welcome message
+
+**File: `launch_chainlit.py`**
+- Copy the Chainlit launcher script
+
+### **Step 7: Add Semantic Kernel Functions**
+
+**Directory: `sk_functions/`**
+Copy all these prompt files:
+- `Triage_CategoryRouting_prompt.txt`
+- `FinancialEvent_Detection_prompt.txt`
+- `OpportunityIdent_skprompt.txt`
+- `EarningsCall_GuidanceAnalysis_prompt.txt`
+- `StrategicInsight_Generation_prompt.txt`
+- `CompanyTakeaway_skprompt.txt`
+
+### **Step 8: Update Existing Extractors**
+
+**Update: `extractors/sec_extractor.py`**
+- Add BeautifulSoup import
+- Update date filtering to use config values
+- Add proper error handling
+
+**Update: `extractors/sam_extractor.py`**
+- Update date filtering to use config values
+- Ensure API quota management
+
+**Update: `extractors/news_extractor.py`**
+- Update date filtering to use config values
+- Add regulatory feeds support
+
+**File: `extractors/extractor_wrappers.py`**
+- Copy the extractor wrapper implementations
+- Provides `extract_for_company()` methods
+
+### **Step 9: Add Company Profiles**
+
+**Directory: `data/company_profiles/`**
+Copy all company profile JSON files:
+- `Capital_One_profile.json`
+- `Fannie_Mae_profile.json`
+- `Freddie_Mac_profile.json`
+- `Navy_Federal_Credit_Union_profile.json`
+- `PenFed_Credit_Union_profile.json`
+- `Eagle_Bank_profile.json`
+- `Capital_Bank_N.A._profile.json`
+
+### **Step 10: Update Main Workflow**
+
+**Update: `main.py`**
+- Add company profile loading for analyst agent
+- Update to use new configuration values
+
+### **Step 11: Add Utility Files**
+
+**File: `simulate_workflow.py`**
+- Copy the simulation script for testing
+
+**Update: `extractors/http_utils.py`**
+- Add `USER_AGENTS` and `can_fetch()` functions
+
+---
+
+## **🔧 POST-MIGRATION SETUP**
+
+### **Step 12: Environment Variables**
+Add these to your `.env` file:
+```bash
+# Chainlit
+CHAINLIT_PORT=8000
+
+# Date requirements (already in config, but for reference)
+SEC_DAYS_BACK=90
+SAM_DAYS_BACK=60
+NEWS_HOURS_BACK=168
+```
+
+### **Step 13: Install Dependencies**
+```bash
+pip install -r requirements.txt
+```
+
+### **Step 14: Test the System**
+```bash
+# Test the simulation
+python simulate_workflow.py
+
+# Test the Chainlit interface
+python launch_chainlit.py
+```
+
+---
+
+## **📁 FINAL DIRECTORY STRUCTURE**
+
+Your project should now have this structure:
+```
+your-project/
+├── agents/
+│   ├── analyst_agent.py (UPDATED)
+│   ├── company_resolver.py (NEW)
+│   ├── data_consolidator.py (UPDATED)
+│   ├── single_company_workflow.py (NEW)
+│   └── [your existing agents]
+├── chainlit_app/
+│   ├── main.py (NEW)
+│   ├── chainlit.md (NEW)
+│   └── __init__.py (NEW)
+├── config/
+│   ├── company_config.py (NEW)
+│   ├── config.py (UPDATED)
+│   └── [your existing config]
+├── data/
+│   └── company_profiles/ (NEW)
+├── extractors/
+│   ├── extractor_wrappers.py (NEW)
+│   ├── http_utils.py (UPDATED)
+│   ├── sec_extractor.py (UPDATED)
+│   ├── sam_extractor.py (UPDATED)
+│   ├── news_extractor.py (UPDATED)
+│   └── [your existing extractors]
+├── services/
+│   ├── app_context.py (NEW)
+│   ├── error_handler.py (NEW)
+│   ├── profile_loader.py (NEW)
+│   ├── progress_handler.py (NEW)
+│   └── [your existing services]
+├── sk_functions/ (NEW)
+├── launch_chainlit.py (NEW)
+├── simulate_workflow.py (NEW)
+├── main.py (UPDATED)
+├── requirements.txt (UPDATED)
+└── [your existing files]
+```
+
+---
+
+## **✅ VERIFICATION CHECKLIST**
+
+After migration, verify:
+- [ ] All new directories created
+- [ ] All new files copied
+- [ ] Dependencies installed
+- [ ] Company profiles loaded
+- [ ] Simulation runs successfully
+- [ ] Chainlit interface launches
+- [ ] Single company workflow works
+- [ ] Error handling functions properly
+
+---
+
+## **🚨 TROUBLESHOOTING**
+
+**Common Issues:**
+1. **Import errors** → Check all dependencies installed
+2. **Profile loading fails** → Verify JSON files in `data/company_profiles/`
+3. **Chainlit won't start** → Check port availability and dependencies
+4. **Analysis fails** → Verify semantic kernel functions loaded
+
+**Need Help?** Run the simulation script first to isolate issues before testing the full system.
+
+---
+
+## **🎯 KEY NEW FEATURES ADDED**
+
+### **Chainlit Interface**
+- Web-based UI for easy company briefings
+- Real-time progress updates
+- Company suggestion buttons
+- Professional report formatting
+
+### **Single Company Workflow**
+- Individual company research on demand
+- Proprietary data integration
+- Consulting-ready insights
+- Actionable recommendations
+
+### **Enhanced Analysis**
+- Company profile integration
+- Key buyer and alumni data
+- Procurement opportunity detection
+- Financial event analysis
+- Strategic insight generation
+
+### **Improved Configuration**
+- Date-based filtering (3 months SEC, 2 months SAM, 7 days news)
+- API quota management
+- Error handling and logging
+- Modular service architecture
+
+---
+
+**🎉 You're now ready to use the enhanced system with Chainlit interface and single company workflows!**
+
+**Next Steps:**
+1. Copy all files from the GitHub repo
+2. Follow the migration steps above
+3. Test with simulation script
+4. Launch Chainlit interface
+5. Start generating company briefings!
+
+**Support:** If you encounter issues, run `python simulate_workflow.py` first to test the core functionality without API keys. 

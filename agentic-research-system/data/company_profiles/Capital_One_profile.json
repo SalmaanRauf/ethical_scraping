@@ -1,0 +1,147 @@
+{
+    "people": {
+      "keyBuyers": [
+        {
+          "id": "A7B8C90123",
+          "name": "REDACTED",
+          "isDeleted": false,
+          "title": "REDACTED",
+          "emailAddress": "REDACTED",
+          "linkedinUrl": "REDACTED",
+          "numberOfWins": 9,
+          "lastOpportunityWonDate": "2024-01-18T00:00:00Z",
+          "lastOpportunityStage": "Closed - Won",
+          "photoUrl": null,
+          "opportunityKey": "K1J2H3G4F5E6D7C8B9A0",
+          "opportunityId": "QW12ER34TY56UI78OP90",
+          "pkbIsNotProspect": false,
+          "closeWonOpps": [
+            {
+              "id": "LK87JM65NH43BV21CX09",
+              "name": "2022 IT SOX 404 Compliance and IT Audit Co-Sourcing",
+              "solution": "IAFA",
+              "opportunityKey": "A84B62C13E79F05D46B2",
+              "opportunityCloseDate": "2022-04-07T00:00:00Z"
+            },
+            {
+              "id": "ZX90CV12BN45MQ78RT23",
+              "name": "Process audit and SOX assistance",
+              "solution": "IAFA",
+              "opportunityKey": "FP48FM22NC53BQ77GA19",
+              "opportunityCloseDate": "2022-04-09T00:00:00Z"
+            },
+            {
+              "id": "UI09OP67LK45MJ23NH10",
+              "name": "Internal Audit and SOX Compliance",
+              "solution": "IAFA",
+              "opportunityKey": "NM29ZA38ZX74PO13LK56",
+              "opportunityCloseDate": "2023-05-17T00:00:00Z"
+            },
+            {
+              "id": "CV71VB54ZQ12PL67AS89",
+              "name": "2023 BP IA and SOX Co-source Assistance",
+              "solution": "IAFA",
+              "opportunityKey": "AA66BB77CC88DD99EE00",
+              "opportunityCloseDate": "2022-12-31T00:00:00Z"
+            },
+            {
+              "id": "LO09KI87JU65GY43HT21",
+              "name": "Loan Data Review",
+              "solution": "IAFA",
+              "opportunityKey": "EC12RF34TG56YH78UJ90",
+              "opportunityCloseDate": "2023-06-23T00:00:00Z"
+            },
+            {
+              "id": "RE19TY65UI12PO89LK56",
+              "name": "2023 IT Audit IT SOX Assistance",
+              "solution": "IAFA",
+              "opportunityKey": "QZ94WS82ED70RF63VT51",
+              "opportunityCloseDate": "2023-01-02T00:00:00Z"
+            },
+            {
+              "id": "ER45TY67UI89OP01LK23",
+              "name": "Expansion of 2023 Internal Audit Plan",
+              "solution": "IAFA",
+              "opportunityKey": "MN56BG78VC90XS12ZA34",
+              "opportunityCloseDate": "2023-07-27T00:00:00Z"
+            },
+            {
+              "id": "PL12KM34OI45UJ67NH90",
+              "name": "Call Report Audit",
+              "solution": "IAFA",
+              "opportunityKey": "PX67LI34KO56MN89RE12",
+              "opportunityCloseDate": "2023-07-27T00:00:00Z"
+            },
+            {
+              "id": "HU86YI92LO54MP21ZD03",
+              "name": "2024 Process Audit and SOX Co-Sourcing",
+              "solution": "IAFA",
+              "opportunityKey": "VV88BB77NN66MM55LL44",
+              "opportunityCloseDate": "2024-01-18T00:00:00Z"
+            }
+          ]
+        },
+        {
+          "id": "B1C2D3E4F5",
+          "name": "REDACTED",
+          "isDeleted": false,
+          "title": "REDACTED",
+          "emailAddress": "REDACTED",
+          "linkedinUrl": "REDACTED",
+          "numberOfWins": 1,
+          "lastOpportunityWonDate": "2022-05-05T00:00:00Z",
+          "lastOpportunityStage": "Closed - Won",
+          "photoUrl": null,
+          "opportunityKey": "SS19DD38FF27GG16HH05",
+          "opportunityId": "QQ33WW44EE55RR66TT77",
+          "pkbIsNotProspect": false,
+          "closeWonOpps": [
+            {
+              "id": "YY11UU22II33OO44PP55",
+              "name": "PCI Scoping, Inventory and Gap Assessment",
+              "solution": "TC",
+              "opportunityKey": "AR44TH33VE22MY11LP09",
+              "opportunityCloseDate": "2022-05-05T00:00:00Z"
+            }
+          ]
+        }
+      ],
+      "accountPMO": null,
+      "accountMDD": {
+        "firstName": "REDACTED",
+        "lastName": "REDACTED",
+        "principalName": "REDACTED",
+        "emailAddress": "REDACTED",
+        "title": "REDACTED",
+        "photoUrl": null,
+        "company": "REDACTED",
+        "location": null,
+        "solution": "REDACTED",
+        "isTerminated": false,
+        "city": "REDACTED",
+        "country": null,
+        "peopleSearchKey": "KP96LD82PL24GF71AF05",
+        "createdDate": "2021-04-07T22:41:03.538Z",
+        "isDeleted": false,
+        "modifiedDate": "2025-07-22T08:10:41.775Z",
+        "name": "REDACTED",
+        "id": "MM11NN22BB33VV44AA55",
+        "label": "Employee",
+        "partitionKey": "JJ66KK77ZZ88XX99CC00"
+      },
+      "accountExecutive": null,
+      "connectedColleagues": [],
+      "alumni": []
+    },
+    "projects": [],
+    "opportunities": {
+      "open": [],
+      "all": []
+    },
+    "accounts": {
+      "parent": null,
+      "children": []
+    }
+  }
+ 
+ 

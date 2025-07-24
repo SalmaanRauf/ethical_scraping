@@ -1,0 +1,39 @@
+{
+  "company_name": "PenFed Credit Union",
+  "industry": "Financial Services",
+  "revenue": "$8.5B",
+  "size": "Large",
+  "key_buyers": ["Department of Defense", "Veterans Affairs", "Military Branches"],
+  "alumni_contacts": ["Christopher Brown", "Rachel Green", "Thomas Anderson"],
+  "active_opportunities": ["Digital Transformation", "Lending Platform", "Member Services"],
+  "projects": [
+    {
+      "name": "Digital Lending Platform",
+      "value": "$28M",
+      "status": "Active",
+      "description": "Automated loan processing and approval"
+    },
+    {
+      "name": "Member Experience Enhancement",
+      "value": "$15M",
+      "status": "Planning",
+      "description": "Improved member portal and services"
+    }
+  ],
+  "recent_events": [
+    {
+      "date": "2024-01-16",
+      "type": "Technology",
+      "description": "New lending platform deployment"
+    },
+    {
+      "date": "2024-01-05",
+      "type": "Service",
+      "description": "Enhanced member portal launch"
+    }
+  ],
+  "competitors": ["Navy Federal", "USAA", "Other Military Credit Unions"],
+  "regulatory_environment": "NCUA Regulated",
+  "technology_focus": ["Digital Lending", "Member Experience", "Automation"],
+  "compliance_priorities": ["NCUA Requirements", "Military Compliance", "Lending Regulations"]
+} 

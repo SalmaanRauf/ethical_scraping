@@ -2,366 +2,231 @@ import json
 import os
 from datetime import datetime
 from typing import Dict, Any, List, Optional
-from dataclasses import dataclass, asdict
+import re
 import logging
+from services.profile_loader import ProfileLoader
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-@dataclass
-class ConsolidatedItem:
-    """Represents a consolidated data item with all relevant information."""
-    source_type: str  # 'news', 'sec_filing', 'procurement'
-    company: str
-    title: str
-    description: str
-    url: str
-    published_date: str
-    source_name: str
-    raw_data: Dict[str, Any]  # Original raw data
-    relevance_score: float = 0.0
-    key_terms: List[str] = None
-    
-    def __post_init__(self):
-        if self.key_terms is None:
-            self.key_terms = []
 
 class DataConsolidator:
     """
     Consolidates raw data from all extractors into a structured document
-    for efficient analysis by the Analyst Agent.
+    for efficient analysis by the Analyst Agent. It applies detailed relevance
+    scoring and key term extraction.
     """
-    
-    def __init__(self, output_dir: str = "data/consolidated"):
+
+    def __init__(self, profile_loader: ProfileLoader, output_dir: str = "data/consolidated_output"):
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
         
-        # Target companies for filtering
-        self.target_companies = [
-            "Capital One", "Fannie Mae", "Freddie Mac", "Navy Federal Credit Union", 
-            "PenFed Credit Union", "EagleBank", "Capital Bank N.A."
-        ]
-        
-        # Keywords that indicate high-impact events
+        self.profile_loader = profile_loader
+        self.company_profiles = self.profile_loader.load_profiles()
+        self.all_company_names = self._get_all_company_names()
+
+        # Keywords that indicate high-impact events (from old implementation)
         self.high_impact_keywords = [
-            # Financial terms
             "earnings", "revenue", "profit", "loss", "quarterly", "annual", "financial results",
             "merger", "acquisition", "buyout", "takeover", "deal", "transaction",
             "layoff", "restructuring", "reorganization", "cost cutting",
             "expansion", "growth", "investment", "funding", "capital raise",
-            
-            # Regulatory terms
             "regulatory", "compliance", "enforcement", "investigation", "settlement",
             "fine", "penalty", "violation", "cease and desist", "consent order",
-            
-            # Technology terms
             "digital transformation", "technology", "AI", "artificial intelligence",
             "blockchain", "cryptocurrency", "fintech", "innovation",
-            
-            # Leadership terms
             "CEO", "executive", "leadership", "appointment", "resignation",
             "board", "director", "management change",
-            
-            # Market terms
             "market", "trading", "stock", "share", "dividend", "buyback",
             "IPO", "initial public offering", "listing"
         ]
 
+    def _get_all_company_names(self) -> List[str]:
+        """Gathers all canonical names and aliases from loaded profiles."""
+        names = []
+        for profile in self.company_profiles.values():
+            # Handle both new and legacy profile formats
+            if 'display_name' in profile:
+                names.append(profile['display_name'])
+            elif 'company_name' in profile:
+                names.append(profile['company_name'])
+            names.extend(profile.get('aliases', []))
+        return sorted(list(set(names)), key=len, reverse=True)
+
+    def process_raw_data(self, raw_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Process raw data from all extractors, apply relevance scoring and key term extraction.
+        """
+        logger.info(f"🔄 Processing {len(raw_data)} raw data items...")
+        
+        processed_items = []
+        for item in raw_data:
+            # Determine source type (re-integrated from old consolidator)
+            source_type = self._determine_source_type(item)
+            item['source_type'] = source_type
+
+            # Calculate relevance score (re-integrated from old consolidator)
+            relevance_score = self._calculate_relevance_score(item)
+            item['relevance_score'] = relevance_score
+
+            # Extract key terms (re-integrated from old consolidator)
+            item['key_terms'] = self._extract_key_terms(item)
+            
+            processed_items.append(item)
+
+        # Filter out items with low relevance (can be adjusted)
+        relevant_items = [item for item in processed_items if item['relevance_score'] > 0.0]
+        relevant_items.sort(key=lambda x: x['relevance_score'], reverse=True)
+        
+        analysis_document = self._create_analysis_document(relevant_items)
+        output_files = self._save_output(relevant_items, analysis_document)
+        
+        result = {
+            "consolidated_items": relevant_items,
+            "analysis_document": analysis_document,
+            "files": output_files
+        }
+        
+        logger.info(f"✅ Consolidated {len(relevant_items)} relevant items")
+        return result
+
     def _calculate_relevance_score(self, item: Dict[str, Any]) -> float:
         """
         Calculate a relevance score based on company mentions and high-impact keywords.
+        Re-integrated from old implementation.
         """
         score = 0.0
-        
+
         # Get text to analyze
         title = item.get('title', '').lower()
         description = item.get('description', '').lower()
-        summary = item.get('summary', '').lower()
         content = item.get('content', '').lower()
-        
-        all_text = f"{title} {description} {summary} {content}"
-        
-        # Pre-compute lowercase versions for efficiency
-        target_companies_lower = [company.lower() for company in self.target_companies]
-        high_impact_keywords_lower = [keyword.lower() for keyword in self.high_impact_keywords]
-        
+
+        all_text = f"{title} {description} {content}"
+
         # Check for target company mentions
         company_mentioned = False
-        for company_lower in target_companies_lower:
+        for company_lower in [c.lower() for c in self.all_company_names]:
             if company_lower in all_text:
                 score += 0.4  # High weight for company mention
                 company_mentioned = True
                 break
-        
+
         if not company_mentioned:
             return 0.0  # No relevance if no target company mentioned
-        
+
         # Check for high-impact keywords
         keyword_matches = 0
-        for keyword_lower in high_impact_keywords_lower:
-            if keyword_lower in all_text:
+        for keyword in [k.lower() for k in self.high_impact_keywords]:
+            if keyword in all_text:
                 keyword_matches += 1
                 score += 0.1  # Moderate weight for each keyword
-        
+
         # Bonus for multiple keywords
         if keyword_matches >= 3:
             score += 0.2
-        
-        # Cap score at 1.0
-        return min(score, 1.0)
+
+        # Normalize score to 0-1 range
+        score = min(score, 1.0)
+
+        return score
 
     def _extract_key_terms(self, item: Dict[str, Any]) -> List[str]:
         """
-        Extract key terms from an item for analysis.
+        Extract key terms from the item for analysis.
+        Re-integrated from old implementation.
         """
-        import re
+        key_terms = []
         
-        # Get all text content
         title = item.get('title', '')
         description = item.get('description', '')
-        summary = item.get('summary', '')
         content = item.get('content', '')
         
-        all_text = f"{title} {description} {summary} {content}"
+        all_text = f"{title} {description} {content}".lower()
         
-        # Extract words (3+ characters, alphanumeric)
-        words = re.findall(r'\b[a-zA-Z]{3,}\b', all_text.lower())
+        # Extract terms that match high-impact keywords
+        for keyword in self.high_impact_keywords:
+            if keyword.lower() in all_text:
+                key_terms.append(keyword)
         
-        # Filter out common words
-        common_words = {
-            'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
-            'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had',
-            'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might',
-            'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it',
-            'we', 'they', 'me', 'him', 'her', 'us', 'them', 'from', 'into', 'during',
-            'including', 'until', 'against', 'among', 'throughout', 'despite', 'towards',
-            'upon', 'concerning', 'about', 'like', 'through', 'over', 'before', 'after',
-            'since', 'without', 'under', 'within', 'along', 'following', 'across',
-            'behind', 'beyond', 'plus', 'except', 'but', 'up', 'out', 'off', 'above',
-            'below', 'between', 'among', 'around', 'down', 'up', 'in', 'out', 'on',
-            'off', 'over', 'under', 'again', 'further', 'then', 'once', 'here',
-            'there', 'when', 'where', 'why', 'how', 'all', 'any', 'both', 'each',
-            'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not',
-            'only', 'own', 'same', 'so', 'than', 'too', 'very', 's', 't', 'can',
-            'will', 'just', 'don', 'should', 'now', 'd', 'll', 'm', 'o', 're',
-            've', 'y', 'ain', 'aren', 'couldn', 'didn', 'doesn', 'hadn', 'hasn',
-            'haven', 'isn', 'ma', 'mightn', 'mustn', 'needn', 'shan', 'shouldn',
-            'wasn', 'weren', 'won', 'wouldn'
-        }
+        # Extract company names
+        for company in self.all_company_names:
+            if company.lower() in all_text:
+                key_terms.append(company)
         
-        key_terms = [word for word in words if word not in common_words]
-        
-        # Limit to top 10 most frequent terms
-        from collections import Counter
-        term_counts = Counter(key_terms)
-        return [term for term, count in term_counts.most_common(10)]
+        # Remove duplicates and limit to top terms
+        unique_terms = list(set(key_terms))
+        return unique_terms[:10]  # Limit to top 10 terms
 
-    def _normalize_item(self, item: Dict[str, Any], source_type: str) -> ConsolidatedItem:
+    def _determine_source_type(self, item: Dict[str, Any]) -> str:
         """
-        Normalize a raw data item into a ConsolidatedItem.
+        Determine the source type of an item.
+        Re-integrated from old implementation.
         """
-        # Input validation
-        if not isinstance(item, dict):
-            logger.warning(f"Invalid item type: {type(item)}, skipping")
-            return None
+        source = item.get('source_name', item.get('source', '')).lower()
         
-        # Extract basic fields with validation
-        company = str(item.get('company', '')).strip()
-        title = str(item.get('title', item.get('headline', ''))).strip()
-        description = str(item.get('description', item.get('summary', ''))).strip()
-        url = str(item.get('url', item.get('link', ''))).strip()
-        published_date = str(item.get('published_date', item.get('publishedAt', ''))).strip()
-        source_name = str(item.get('source_name', item.get('source', ''))).strip()
-        
-        # Validate required fields
-        if not title:
-            logger.warning("Item missing title, skipping")
-            return None
-        
-        # Calculate relevance score
-        relevance_score = self._calculate_relevance_score(item)
-        
-        # Extract key terms
-        key_terms = self._extract_key_terms(item)
-        
-        return ConsolidatedItem(
-            source_type=source_type,
-            company=company,
-            title=title,
-            description=description,
-            url=url,
-            published_date=published_date,
-            source_name=source_name,
-            raw_data=item,
-            relevance_score=relevance_score,
-            key_terms=key_terms
-        )
+        if 'sec' in source or 'filing' in source:
+            return 'sec_filing'
+        elif 'sam.gov' in source or 'procurement' in source:
+            return 'procurement'
+        elif 'news' in source or 'article' in source or 'gnews' in source or 'rss' in source:
+            return 'news'
+        elif 'bing' in source:
+            return 'bing_grounding'
+        else:
+            return 'unknown'
 
-    def consolidate_data(self, raw_data: List[Dict[str, Any]]) -> List[ConsolidatedItem]:
+    def _create_analysis_document(self, items: List[Dict[str, Any]]) -> str:
         """
-        Consolidate raw data from all extractors into structured items.
+        Creates a structured Markdown document from the consolidated items.
         """
-        logger.info(f"🔄 Consolidating {len(raw_data)} raw data items...")
+        doc_parts = [f"# Intelligence Analysis Document - {datetime.now().strftime('%Y-%m-%d')}"]
         
-        consolidated_items = []
+        company_summary = {}
+        for item in items:
+            for company in self.all_company_names:
+                if company.lower() in item.get('content', '').lower() or company.lower() in item.get('title', '').lower():
+                    company_summary[company] = company_summary.get(company, 0) + 1
         
-        for item in raw_data:
-            # Determine source type based on item structure
-            source_type = 'unknown'
-            if 'feed_source' in item or 'source' in item:
-                source_type = 'news'
-            elif 'filing_type' in item or 'sec' in str(item).lower():
-                source_type = 'sec_filing'
-            elif 'naics' in item or 'procurement' in str(item).lower():
-                source_type = 'procurement'
+        if company_summary:
+            doc_parts.append("\n## Monitored Companies Mentioned")
+            for company, count in company_summary.items():
+                doc_parts.append(f"- **{company}:** {count} relevant item(s)")
+        
+        all_content = " ".join([item.get('content', '') for item in items])
+        key_terms_identified = {kw for kw in self.high_impact_keywords if kw.lower() in all_content.lower()}
+        if key_terms_identified:
+            doc_parts.append("\n## Key Themes Identified")
+            doc_parts.append(", ".join(sorted(list(key_terms_identified))))
             
-            # Normalize the item
-            consolidated_item = self._normalize_item(item, source_type)
+        doc_parts.append("\n---\n\n## Detailed Analysis Items")
+        
+        for i, item in enumerate(items, 1):
+            doc_parts.append(f"\n### Item {i}: {item.get('title', 'No Title')}")
+            doc_parts.append(f"**Source:** {item.get('source', 'N/A')} | **Relevance Score:** {item.get('relevance_score', 0):.2f}")
+            doc_parts.append(f"**Companies:** {item.get('company', 'N/A')}") # Assuming primary company is set
+            if item.get('published_date'):
+                doc_parts.append(f"**Date:** {item.get('published_date')}")
+            if item.get('link'):
+                doc_parts.append(f"**Link:** {item.get('link')}")
             
-            # Only include items with some relevance
-            if consolidated_item and consolidated_item.relevance_score > 0.0:
-                consolidated_items.append(consolidated_item)
-                logger.debug(f"✅ Added item: {consolidated_item.title[:50]}... (score: {consolidated_item.relevance_score:.2f})")
-            else:
-                logger.debug(f"❌ Skipped item: {item.get('title', 'Unknown')[:50]}... (score: 0.0)")
+            content_summary = (item.get('content', '')[:1000] + '...') if len(item.get('content', '')) > 1000 else item.get('content', '')
+            doc_parts.append(f"\n**Content Summary:**\n```\n{content_summary}\n```")
         
-        # Sort by relevance score (highest first)
-        consolidated_items.sort(key=lambda x: x.relevance_score, reverse=True)
-        
-        logger.info(f"✅ Consolidated {len(consolidated_items)} relevant items from {len(raw_data)} total")
-        return consolidated_items
+        return "\n".join(doc_parts)
 
-    def create_analysis_document(self, consolidated_items: List[ConsolidatedItem]) -> str:
+    def _save_output(self, items: List[Dict[str, Any]], document: str) -> Dict[str, str]:
         """
-        Create a structured document for the Analyst Agent to process.
-        """
-        logger.info(f"📄 Creating analysis document with {len(consolidated_items)} items...")
-        
-        # Create document content
-        doc_content = []
-        doc_content.append("# Financial Intelligence Analysis Document")
-        doc_content.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        doc_content.append(f"Total Items: {len(consolidated_items)}")
-        doc_content.append("")
-        
-        # Group by company
-        company_groups = {}
-        for item in consolidated_items:
-            company = item.company or "Unknown"
-            if company not in company_groups:
-                company_groups[company] = []
-            company_groups[company].append(item)
-        
-        # Add items grouped by company
-        for company, items in company_groups.items():
-            doc_content.append(f"## {company}")
-            doc_content.append("")
-            
-            for i, item in enumerate(items, 1):
-                doc_content.append(f"### Item {i}: {item.title}")
-                doc_content.append(f"**Source Type:** {item.source_type}")
-                doc_content.append(f"**Relevance Score:** {item.relevance_score:.2f}")
-                doc_content.append(f"**Published:** {item.published_date}")
-                doc_content.append(f"**Source:** {item.source_name}")
-                doc_content.append(f"**URL:** {item.url}")
-                doc_content.append("")
-                doc_content.append(f"**Description:** {item.description}")
-                doc_content.append("")
-                doc_content.append(f"**Key Terms:** {', '.join(item.key_terms)}")
-                doc_content.append("")
-                doc_content.append("---")
-                doc_content.append("")
-        
-        # Add summary statistics
-        doc_content.append("## Summary Statistics")
-        doc_content.append("")
-        
-        # Source type breakdown
-        source_counts = {}
-        for item in consolidated_items:
-            source_counts[item.source_type] = source_counts.get(item.source_type, 0) + 1
-        
-        doc_content.append("**Items by Source Type:**")
-        for source_type, count in source_counts.items():
-            doc_content.append(f"- {source_type}: {count}")
-        doc_content.append("")
-        
-        # Relevance score distribution
-        high_relevance = len([item for item in consolidated_items if item.relevance_score >= 0.7])
-        medium_relevance = len([item for item in consolidated_items if 0.3 <= item.relevance_score < 0.7])
-        low_relevance = len([item for item in consolidated_items if item.relevance_score < 0.3])
-        
-        doc_content.append("**Items by Relevance Score:**")
-        doc_content.append(f"- High relevance (≥0.7): {high_relevance}")
-        doc_content.append(f"- Medium relevance (0.3-0.7): {medium_relevance}")
-        doc_content.append(f"- Low relevance (<0.3): {low_relevance}")
-        doc_content.append("")
-        
-        return "\n".join(doc_content)
-
-    def save_consolidated_data(self, consolidated_items: List[ConsolidatedItem], 
-                             analysis_document: str) -> Dict[str, str]:
-        """
-        Save consolidated data and analysis document to files.
+        Saves the consolidated items (JSON) and the analysis document (Markdown).
         """
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         
-        # Save consolidated items as JSON
-        json_filename = os.path.join(self.output_dir, f"consolidated_data_{timestamp}.json")
-        try:
-            with open(json_filename, 'w') as f:
-                json.dump([asdict(item) for item in consolidated_items], f, indent=2, default=str)
-            logger.info(f"💾 Saved consolidated data to: {json_filename}")
-        except IOError as e:
-            logger.error(f"Error saving consolidated data to {json_filename}: {e}")
-            return {}
-        
-        # Save analysis document
-        doc_filename = os.path.join(self.output_dir, f"analysis_document_{timestamp}.md")
-        try:
-            with open(doc_filename, 'w') as f:
-                f.write(analysis_document)
-            logger.info(f"💾 Saved analysis document to: {doc_filename}")
-        except IOError as e:
-            logger.error(f"Error saving analysis document to {doc_filename}: {e}")
-            return {}
-        
-        return {
-            'json_file': json_filename,
-            'markdown_file': doc_filename,
-            'item_count': len(consolidated_items)
-        }
-
-    def process_raw_data(self, raw_data: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        Main method to process raw data and create analysis document.
-        """
-        logger.info("🚀 Starting data consolidation process...")
-        
-        # Consolidate data
-        consolidated_items = self.consolidate_data(raw_data)
-        
-        if not consolidated_items:
-            logger.warning("⚠️ No relevant items found for analysis")
-            return {
-                'consolidated_items': [],
-                'analysis_document': "# No relevant items found for analysis",
-                'files': {},
-                'item_count': 0
-            }
-        
-        # Create analysis document
-        analysis_document = self.create_analysis_document(consolidated_items)
-        
-        # Save files
-        files = self.save_consolidated_data(consolidated_items, analysis_document)
-        
-        logger.info(f"✅ Data consolidation complete: {len(consolidated_items)} items processed")
-        
-        return {
-            'consolidated_items': consolidated_items,
-            'analysis_document': analysis_document,
-            'files': files,
-            'item_count': len(consolidated_items)
-        } 
+        json_filename = f"consolidated_{timestamp}.json"
+        json_filepath = os.path.join(self.output_dir, json_filename)
+        with open(json_filepath, 'w', encoding='utf-8') as f:
+            json.dump(items, f, indent=4, ensure_ascii=False)
+            
+        md_filename = f"analysis_doc_{timestamp}.md"
+        md_filepath = os.path.join(self.output_dir, md_filename)
+        with open(md_filepath, 'w', encoding='utf-8') as f:
+            f.write(document)
+            
+        return {"json_file": json_filepath, "markdown_file": md_filepath}

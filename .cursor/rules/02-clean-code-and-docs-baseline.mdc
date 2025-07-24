@@ -1,0 +1,14 @@
+---
+description: Enforce typed, linted, well‑documented code.
+globs:
+  - "**/*.{ts,tsx,py,go,java}"
+alwaysApply: false
+---
+
+For any file matching the glob:
+
+- Run project linters/formatters (eslint / prettier, ruff / black, etc.).
+- All public functions & classes need Google‑style (or PEP 257) docstrings.
+- Add meaningful inline comments explaining **why**, not **what**.
+- Use strict typing (`mypy --strict`, `tsconfig "strict": true`, etc.).
+- New modules must include a README‑style usage snippet at the bottom.

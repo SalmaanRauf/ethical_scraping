@@ -1,0 +1,39 @@
+{
+  "company_name": "EagleBank",
+  "industry": "Financial Services",
+  "revenue": "$1.2B",
+  "size": "Medium",
+  "key_buyers": ["Local Governments", "Small Businesses", "Real Estate Developers"],
+  "alumni_contacts": ["Patricia White", "Daniel Miller", "Lisa Johnson"],
+  "active_opportunities": ["Commercial Lending Platform", "Digital Banking", "Compliance Automation"],
+  "projects": [
+    {
+      "name": "Commercial Lending Enhancement",
+      "value": "$12M",
+      "status": "Active",
+      "description": "Digital commercial lending platform"
+    },
+    {
+      "name": "Digital Banking Upgrade",
+      "value": "$8M",
+      "status": "Planning",
+      "description": "Modern online banking experience"
+    }
+  ],
+  "recent_events": [
+    {
+      "date": "2024-01-14",
+      "type": "Technology",
+      "description": "Commercial lending platform launch"
+    },
+    {
+      "date": "2024-01-03",
+      "type": "Regulatory",
+      "description": "Compliance automation implementation"
+    }
+  ],
+  "competitors": ["Local Banks", "Regional Banks", "Online Lenders"],
+  "regulatory_environment": "FDIC Regulated",
+  "technology_focus": ["Commercial Lending", "Digital Banking", "Compliance"],
+  "compliance_priorities": ["FDIC Requirements", "Local Regulations", "Data Security"]
+} 

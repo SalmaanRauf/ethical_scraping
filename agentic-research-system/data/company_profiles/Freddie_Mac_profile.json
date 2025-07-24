@@ -1,0 +1,39 @@
+{
+  "company_name": "Federal Home Loan Mortgage Corporation",
+  "industry": "Financial Services",
+  "revenue": "$78.9B",
+  "size": "Large",
+  "key_buyers": ["Federal Housing Finance Agency", "Treasury Department", "HUD"],
+  "alumni_contacts": ["David Wilson", "Jennifer Lee", "Robert Martinez"],
+  "active_opportunities": ["Mortgage Technology Platform", "Risk Analytics", "Regulatory Compliance"],
+  "projects": [
+    {
+      "name": "Mortgage Technology Modernization",
+      "value": "$45M",
+      "status": "Active",
+      "description": "Upgrading mortgage processing and analytics"
+    },
+    {
+      "name": "Advanced Risk Analytics",
+      "value": "$30M",
+      "status": "Planning", 
+      "description": "AI-powered risk assessment tools"
+    }
+  ],
+  "recent_events": [
+    {
+      "date": "2024-01-20",
+      "type": "Technology",
+      "description": "New risk analytics platform deployment"
+    },
+    {
+      "date": "2024-01-12",
+      "type": "Regulatory", 
+      "description": "FHFA compliance review completed"
+    }
+  ],
+  "competitors": ["Fannie Mae", "Ginnie Mae", "Private Mortgage Insurers"],
+  "regulatory_environment": "Highly Regulated",
+  "technology_focus": ["Risk Analytics", "Digital Mortgage", "Cloud Infrastructure"],
+  "compliance_priorities": ["FHFA Requirements", "SEC Reporting", "Data Security"]
+} 

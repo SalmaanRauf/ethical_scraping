@@ -1,0 +1,14 @@
+---
+description: Apply the R.A.I.L.G.U.A.R.D. secure‑by‑design checklist to every change.
+alwaysApply: true
+---
+
+- **R**isk‑first threat modelling before code.
+- **A**ttached constraints: honour licenses, privacy, rate‑limits.
+- **I**dempotent & deterministic where practical.
+- **L**east‑privilege for tokens, env vars, FS access.
+- **G**uardrails: validate & sanitise all external inputs.
+- **U**nit tests for security‑critical paths.
+- **A**uditability: log key events without leaking secrets.
+- **R**eproducibility: lock dependency versions; pin container images.
+- **D**ocument mitigation steps inline or in `CHANGELOG.md`.

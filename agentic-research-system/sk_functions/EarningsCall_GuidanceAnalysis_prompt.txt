@@ -31,9 +31,13 @@ You are an earnings call analyst specializing in forward-looking guidance and st
 - "We're expanding our capabilities in..."
 
 Input Text:
-{input}
+{{$input}}
 
-**Respond ONLY with a JSON object:**
+Respond ONLY with a valid JSON object and NOTHING ELSE.
+Do NOT include code fences (```) or language tags.
+Do NOT include any explanations, preambles, or formatting before or after the JSON.
+All keys and string values should be double-quoted, booleans/integers should be unquoted. Reply with nothing outside the opening and closing curly braces.
+
 {
   "guidance_found": true/false,
   "spending_type": "Technology" | "Regulatory" | "Strategic" | "Operational" | "Capital_Allocation",

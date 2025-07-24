@@ -1,0 +1,63 @@
+[
+    {
+        "title": "Company Name Announces $500M Technology Investment",
+        "description": "Company Name is investing $500 million in digital transformation initiatives including AI and cloud infrastructure.",
+        "source": "News Article",
+        "url": "https://example.com/news",
+        "published_date": "2024-01-10",
+        "content": "Company Name announced today a major investment in technology infrastructure. The $500 million initiative will focus on artificial intelligence, cloud computing, and cybersecurity enhancements.",
+        "source_type": "news",
+        "relevance_score": 1.0,
+        "key_terms": [
+            "AI",
+            "technology",
+            "investment",
+            "Company Name",
+            "artificial intelligence",
+            "digital transformation"
+        ]
+    },
+    {
+        "title": "Company Name Reports Strong Q4 Earnings",
+        "description": "Company Name reported quarterly earnings of $2.5 billion, exceeding analyst expectations by 15%.",
+        "source": "SEC Filing",
+        "url": "https://sec.gov/filing/example",
+        "published_date": "2024-01-15",
+        "content": "Company Name today announced net income of $2.5 billion for the fourth quarter of 2023, representing a 12% increase over the prior year quarter. The strong performance was driven by growth in credit card lending and improved credit quality.",
+        "source_type": "sec_filing",
+        "relevance_score": 0.8999999999999999,
+        "key_terms": [
+            "earnings",
+            "quarterly",
+            "Company Name",
+            "growth"
+        ]
+    },
+    {
+        "title": "SAM.gov: IT Security Services RFP for Company Name",
+        "description": "Company Name seeking IT security consulting services, estimated value $25M",
+        "source": "SAM.gov",
+        "url": "https://sam.gov/opportunity/example",
+        "published_date": "2024-01-12",
+        "content": "Company Name is seeking qualified vendors for comprehensive IT security services including penetration testing, security assessments, and compliance consulting. Estimated contract value: $25 million.",
+        "source_type": "procurement",
+        "relevance_score": 0.5,
+        "key_terms": [
+            "Company Name",
+            "compliance"
+        ]
+    },
+    {
+        "title": "Company Name Expands Digital Banking Platform",
+        "description": "New mobile app features and enhanced online banking capabilities launched by Company Name.",
+        "source": "News Article",
+        "url": "https://example.com/digital",
+        "published_date": "2024-01-08",
+        "content": "Company Name has launched enhanced digital banking features including improved mobile app functionality, real-time fraud detection, and personalized financial insights powered by machine learning.",
+        "source_type": "news",
+        "relevance_score": 0.4,
+        "key_terms": [
+            "Company Name"
+        ]
+    }
+]

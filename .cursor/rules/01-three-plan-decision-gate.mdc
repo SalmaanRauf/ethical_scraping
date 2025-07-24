@@ -1,0 +1,11 @@
+---
+description: Draft three complete implementation plans, score them, pick the best, then code.
+alwaysApply: true
+---
+
+- Before coding, create **three end‑to‑end plans** covering:
+  - architecture & libraries
+  - complexity, maintainability, performance, security
+- Score each plan 1‑5 in those four areas.
+- Pick the highest total score and justify the choice in ≤ 150 words.
+- Only then may implementation begin.

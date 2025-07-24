@@ -5,54 +5,50 @@ import os
 from typing import List, Dict, Any, Optional
 from config.kernel_setup import get_kernel, get_kernel_async
 from semantic_kernel.functions import KernelFunctionFromPrompt
-from semantic_kernel.kernel import Kernel
+from semantic_kernel.kernel import KernelArguments
 from semantic_kernel.contents.chat_message_content import ChatMessageContent
 from semantic_kernel.contents.text_content import TextContent
 from dataclasses import dataclass
+from semantic_kernel.functions.kernel_arguments import KernelArguments
+import traceback
 
 class AnalystAgent:
     def __init__(self, chunk_size: int = 3000, chunk_overlap: int = 500, max_chunks: int = 10):
-        # Try to get kernel synchronously first
         try:
             self.kernel, self.exec_settings = get_kernel()
         except RuntimeError:
-            # If we're in an async context, we'll need to initialize later
             self.kernel = None
             self.exec_settings = None
-        
         self.functions = {}
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.max_chunks = max_chunks
+        self.company_profiles = {}
         self._load_functions()
         
+    def set_profiles(self, profiles_dict: dict):
+        self.company_profiles = profiles_dict or {}
+
     async def _ensure_kernel_initialized(self):
-        """Ensure kernel is initialized, especially in async contexts."""
         if self.kernel is None or self.exec_settings is None:
             self.kernel, self.exec_settings = await get_kernel_async()
-            # Reload functions with the new kernel
             self._load_functions()
         
     def _load_functions(self):
-        """Load all Semantic Kernel functions using the correct 1.34.0 API."""
-        # Get the correct path to sk_functions directory
         sk_dir = os.path.join(os.path.dirname(__file__), "..", "sk_functions")
-        
         prompt_files = {
             "triage": "Triage_CategoryRouting_prompt.txt",
             "financial": "FinancialEvent_Detection_prompt.txt", 
             "procurement": "OpportunityIdent_skprompt.txt",
             "earnings": "EarningsCall_GuidanceAnalysis_prompt.txt",
-            "insight": "StrategicInsight_Generation_prompt.txt"
+            "insight": "StrategicInsight_Generation_prompt.txt",
+            "company_takeaway": "CompanyTakeaway_skprompt.txt",
         }
-
         for name, fname in prompt_files.items():
             path = os.path.normpath(os.path.join(sk_dir, fname))
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     template = f.read()
-                
-                # Create function with the correct SK 1.34.0 API
                 func = KernelFunctionFromPrompt(
                     function_name=name,
                     plugin_name="analyst_plugin",
@@ -60,10 +56,8 @@ class AnalystAgent:
                     prompt=template
                 )
                 self.functions[name] = func
-                
                 if self.kernel:
                     try:
-                        # Add function to kernel - SK 1.34.0 way
                         self.kernel.add_function(
                             function=func,
                             plugin_name="analyst_plugin"
@@ -71,59 +65,48 @@ class AnalystAgent:
                         print(f"✅ Successfully loaded SK function: {name}")
                     except Exception as ex:
                         print(f"⚠️  Failed to add SK function '{name}': {ex}")
-                        
             except FileNotFoundError:
                 print(f"❌ Prompt file not found: {path}")
             except Exception as e:
                 print(f"❌ Error loading prompt '{name}' from {path}: {e}")
-                # Continue loading other functions even if one fails
-        
         print(f"✅ Loaded {len(self.functions)} Semantic Kernel functions successfully")
 
     async def _invoke_function_safely(self, function_name: str, input_text: str):
-        """Safely invoke a Semantic Kernel function with proper error handling for SK 1.34.0."""
         try:
             if function_name not in self.functions:
                 raise ValueError(f"Function '{function_name}' not found")
-            
-            # For SK 1.34.0, use the function's invoke_async method directly
             func = self.functions[function_name]
-            
-            # Create kernel arguments - SK 1.34.0 way
-            from semantic_kernel.kernel_arguments import KernelArguments
             arguments = KernelArguments(input=input_text)
-            
-            # Invoke function directly - this is the correct SK 1.34.0 approach
-            result = await func.invoke_async(
-                kernel=self.kernel,
+            prompt_template = getattr(func, "prompt", None)
+            if prompt_template:
+                try:
+                    debug_prompt = prompt_template.replace("{{$input}}", input_text)
+                    print(f"\n--- DEBUG: Prompt for SK function '{function_name}' ---")
+                    print(debug_prompt[:1500] + ("..." if len(debug_prompt) > 1500 else ""))
+                    print("-" * 60)
+                except Exception as e:
+                    print(f"DEBUG: Could not render debug prompt: {e}")
+            result = await self.kernel.invoke(
+                function_name=function_name,
+                plugin_name="analyst_plugin",
                 arguments=arguments
             )
-            
             return result
-            
         except Exception as e:
             print(f"❌ Error invoking function '{function_name}': {e}")
+            traceback.print_exc()
             return None
 
     def _create_intelligent_chunks(self, text: str, chunk_size: int = None, overlap: int = None) -> List[str]:
-        """
-        Create intelligent chunks that preserve context and avoid cutting in the middle of important information.
-        """
         if not text:
             return []
-        
-        # Memory safety checks
-        if len(text) > 10_000_000:  # 10MB limit
+        if len(text) > 10_000_000:
             print(f"⚠️  Text too large ({len(text)} chars), truncating to 10MB")
             text = text[:10_000_000]
-        
         chunk_size = chunk_size or self.chunk_size
         overlap = overlap or self.chunk_overlap
-        
         if len(text) <= chunk_size:
             return [text]
-        
-        # Monitor memory usage (optional - requires psutil)
         try:
             import psutil
             import os
@@ -132,119 +115,74 @@ class AnalystAgent:
         except ImportError:
             process = None
             initial_memory = 0
-        
         chunks = []
         start = 0
-        
         while start < len(text) and len(chunks) < self.max_chunks:
-            # Check memory usage periodically
             if process and len(chunks) % 10 == 0:
                 current_memory = process.memory_info().rss
-                if current_memory - initial_memory > 500_000_000:  # 500MB increase
+                if current_memory - initial_memory > 500_000_000:
                     print("⚠️  Memory usage too high, stopping chunk creation")
                     break
-            
             end = start + chunk_size
-            
-            # If this isn't the last chunk, try to find a good break point
             if end < len(text):
-                # Look for sentence boundaries within the last 200 characters
                 search_start = max(start + chunk_size - 200, start)
                 search_end = min(start + chunk_size + 200, len(text))
-                
-                # Find the best sentence boundary
                 best_break = end
                 for i in range(search_start, search_end):
                     if text[i] in '.!?':
-                        # Check if it's followed by a space and capital letter (likely sentence end)
                         if i + 1 < len(text) and text[i + 1] in ' \n\t':
                             if i + 2 < len(text) and text[i + 2].isupper():
                                 best_break = i + 1
                                 break
-                
                 end = best_break
-            
-            # Extract the chunk
             chunk = text[start:end].strip()
             if chunk:
                 chunks.append(chunk)
-            
-            # Move to next chunk with overlap
             start = end - overlap
             if start >= len(text):
                 break
-        
         return chunks
 
     def _extract_key_terms(self, text: str) -> List[str]:
-        """
-        Extract key terms that might indicate important financial information.
-        """
-        # Look for monetary amounts, company names, and key financial terms
         key_patterns = [
-            r'\$\s*[0-9,.]+(?:\s*(?:million|billion|thousand|m|bn|k))?',  # Dollar amounts
-            r'\b(?:Capital One|Fannie Mae|Freddie Mac|Navy Federal|PenFed|EagleBank|Capital Bank)\b',  # Company names
-            r'\b(?:investment|acquisition|merger|partnership|funding|contract|deal|agreement)\b',  # Key terms
-            r'\b(?:announces|launches|completes|signs|reports|discloses)\b'  # Action words
+            r'\$\s*[0-9,.]+(?:\s*(?:million|billion|thousand|m|bn|k))?',
+            r'\b(?:Capital One|Fannie Mae|Freddie Mac|Navy Federal|PenFed|EagleBank|Capital Bank)\b',
+            r'\b(?:investment|acquisition|merger|partnership|funding|contract|deal|agreement)\b',
+            r'\b(?:announces|launches|completes|signs|reports|discloses)\b'
         ]
-        
         key_terms = []
         for pattern in key_patterns:
             matches = re.findall(pattern, text, re.IGNORECASE)
             key_terms.extend(matches)
-        
-        return list(set(key_terms))  # Remove duplicates
+        return list(set(key_terms))
 
     def _prioritize_chunks(self, chunks: List[str]) -> List[str]:
-        """
-        Prioritize chunks based on the presence of key financial terms.
-        """
         if not chunks:
             return []
-        
         chunk_scores = []
         for i, chunk in enumerate(chunks):
             score = 0
             key_terms = self._extract_key_terms(chunk)
-            
-            # Score based on key terms found
             score += len(key_terms) * 10
-            
-            # Bonus for chunks with dollar amounts
             if re.search(r'\$\s*[0-9,.]+', chunk):
                 score += 50
-            
-            # Bonus for chunks with company names
             if re.search(r'\b(?:Capital One|Fannie Mae|Freddie Mac|Navy Federal|PenFed|EagleBank|Capital Bank)\b', chunk, re.IGNORECASE):
                 score += 30
-            
-            # Bonus for chunks with action words
             if re.search(r'\b(?:announces|launches|completes|signs|reports|discloses)\b', chunk, re.IGNORECASE):
                 score += 20
-            
             chunk_scores.append((score, i, chunk))
-        
-        # Sort by score (highest first) and return chunks in priority order
         chunk_scores.sort(reverse=True)
         return [chunk for _, _, chunk in chunk_scores]
 
     async def _analyze_chunks_with_map_reduce(self, chunks: List[str], analysis_function: str, max_chunks: int = None) -> List[Dict[str, Any]]:
-        """
-        Analyze chunks using a map-reduce pattern to ensure comprehensive coverage.
-        """
         if not chunks:
             return []
-        
         max_chunks = max_chunks or self.max_chunks
         prioritized_chunks = self._prioritize_chunks(chunks)[:max_chunks]
-        
         print(f"🔍 Analyzing {len(prioritized_chunks)} prioritized chunks (from {len(chunks)} total)")
-        
-        # PARALLEL PROCESSING
         tasks = []
         for i, chunk in enumerate(prioritized_chunks):
             tasks.append(self._analyze_single_chunk(i, chunk, analysis_function))
-        
         chunk_results = []
         try:
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -255,18 +193,13 @@ class AnalystAgent:
                     chunk_results.append(result)
         except Exception as e:
             print(f"❌ Gather operation failed: {e}")
-        
         return self._synthesize_chunk_results(chunk_results, analysis_function)
 
     async def _analyze_single_chunk(self, i: int, chunk: str, analysis_function: str) -> Optional[Dict[str, Any]]:
         try:
-            # Use the new safe invocation method
             result = await self._invoke_function_safely(analysis_function, chunk)
-            
             if result is None:
                 return None
-            
-            # Use safe JSON parsing
             parsed_result = self._safe_json_parse(result, f"chunk_analysis_{analysis_function}")
             if not parsed_result:
                 return None
@@ -282,86 +215,82 @@ class AnalystAgent:
         return None
 
     def _synthesize_chunk_results(self, chunk_results: List[Dict[str, Any]], analysis_type: str) -> List[Dict[str, Any]]:
-        """
-        Synthesize results from multiple chunks into a coherent analysis.
-        """
         if not chunk_results:
             return []
-        
-        # For certain types, consider all relevant results, not just first
         if analysis_type in ['procurement', 'earnings']:
-            # Return all relevant results instead of just the first
             return [result['result'] for result in chunk_results if result['result'].get('event_found', False)]
         else:
-            # For other types, keep current behavior
             return [chunk_results[0]['result']] if chunk_results else []
 
     def _safe_json_parse(self, result, context="unknown") -> Optional[Dict]:
-        """Safely parse JSON from various result types."""
-        content = None
-        
-        # Handle different Semantic Kernel result types
-        if hasattr(result, 'content') and result.content:
-            if isinstance(result.content, list) and len(result.content) > 0:
-                # Handle list of content items
-                content_item = result.content[0]
-                if hasattr(content_item, 'text'):
-                    content = content_item.text
-                elif isinstance(content_item, TextContent):
-                    content = str(content_item)
-                else:
-                    content = str(content_item)
+        import re
+        try:
+            from semantic_kernel.functions.function_result import FunctionResult
+        except ImportError:
+            FunctionResult = None
+        if FunctionResult and isinstance(result, FunctionResult):
+            result = result.value
+        if isinstance(result, list):
+            for entry in result:
+                parsed = self._safe_json_parse(entry, context)
+                if parsed is not None:
+                    return parsed
+            return None
+        if hasattr(result, "content") and isinstance(result.content, str):
+            content = result.content
+        elif hasattr(result, "inner_content"):
+            inner_result = result.inner_content
+            if hasattr(inner_result, "choices") and hasattr(inner_result.choices[0], "message") and hasattr(inner_result.choices[0].message, "content"):
+                content = inner_result.choices[0].message.content
+            elif hasattr(inner_result, "content"):
+                content = inner_result.content
             else:
-                content = str(result.content)
-        elif hasattr(result, 'value'):
+                content = str(inner_result)
+        elif hasattr(result, "choices") and hasattr(result.choices[0], "message") and hasattr(result.choices[0].message, "content"):
+            content = result.choices[0].message.content
+        elif hasattr(result, "value"):
             content = str(result.value)
-        elif hasattr(result, 'text'):
-            content = result.text
+        elif isinstance(result, str):
+            content = result
         else:
             content = str(result)
-        
         if not content:
             print(f"⚠️  Empty content for JSON parsing in {context}")
             return None
-        
+        content = content.strip()
+        if content.startswith('```json'):
+            content = content[len('```json'):].strip()
+        if content.startswith('```'):
+            content = content[len('```'):].strip()
+        if content.endswith('```'):
+            content = content[:-3].strip()
+        content = re.sub(r'^(json|CopyEdit|Edit)?\\s*', '', content)
         try:
-            # Validate content length
-            if len(content) > 1_000_000:  # 1MB limit
-                print(f"❌ JSON content too large in {context}")
-                return None
-            
             parsed = json.loads(content)
-            
-            # Validate structure
             if not isinstance(parsed, dict):
                 print(f"❌ JSON is not a dictionary in {context}")
                 return None
-            
             return parsed
-        
         except json.JSONDecodeError as e:
             print(f"❌ JSON decode error in {context}: {e}")
-            print(f"📋 Problematic content: {content[:200]}...")
+            print(f"📋 Problematic content: {content[:500]}...")
             return None
         except Exception as e:
             print(f"❌ Unexpected error parsing JSON in {context}: {e}")
             return None
 
-    async def analyze_consolidated_data(self, consolidated_data: List[Dict[str, Any]], analysis_document: str) -> List[Dict[str, Any]]:
-        """
-        Analyze consolidated data from the DataConsolidator.
-        This method adapts the consolidated data format for the main analysis pipeline.
-        """
-        print(f"🧠 Starting analysis of {len(consolidated_data)} consolidated items...")
-        
-        # Convert consolidated data format to the format expected by analyze_all_data
+    async def analyze_consolidated_data(self, events_input, analysis_document: str) -> List[Dict[str, Any]]:
+        if isinstance(events_input, dict) and "events" in events_input and "profiles" in events_input:
+            events = events_input["events"]
+            profiles = events_input["profiles"]
+        else:
+            events = events_input
+            profiles = getattr(self, "company_profiles", {})
+        self.company_profiles = profiles
+        print(f"\U0001F9E0 Starting analysis of {len(events)} consolidated items...")
         adapted_data = []
-        
-        for item in consolidated_data:
-            # Extract the raw_data from the consolidated item
+        for item in events:
             raw_data = item.get('raw_data', {})
-            
-            # Create adapted item with the expected structure
             adapted_item = {
                 'title': item.get('title', raw_data.get('title', '')),
                 'description': item.get('description', raw_data.get('description', '')),
@@ -373,11 +302,9 @@ class AnalystAgent:
                 'key_terms': item.get('key_terms', []),
                 'relevance_score': item.get('relevance_score', 0.0)
             }
-            
-            # Determine the type based on source
             source = adapted_item['source'].lower()
             if 'sec' in source:
-                adapted_item['type'] = 'news'  # Will be filtered in triage
+                adapted_item['type'] = 'news'
                 adapted_item['data_type'] = 'filing'
             elif 'sam.gov' in source:
                 adapted_item['type'] = 'procurement'
@@ -385,121 +312,87 @@ class AnalystAgent:
                 adapted_item['type'] = 'news'
             else:
                 adapted_item['type'] = 'unknown'
-            
-            # Add any additional fields from raw_data
-            if 'value_usd' in raw_data:
+            if isinstance(raw_data, dict) and 'value_usd' in raw_data:
                 adapted_item['value_usd'] = raw_data['value_usd']
-            
-            # For text analysis, combine title and description
             if adapted_item['type'] == 'news':
                 adapted_item['summary'] = adapted_item['description']
-            elif adapted_item['data_type'] == 'filing':
+            elif adapted_item.get('data_type') == 'filing':
                 adapted_item['text'] = f"{adapted_item['title']} {adapted_item['description']}"
-            
             adapted_data.append(adapted_item)
-        
         print(f"✅ Adapted {len(adapted_data)} items for analysis")
-        
-        # Use the main analysis pipeline
         results = await self.analyze_all_data(adapted_data)
-        
         print(f"🎯 Analysis complete: {len(results)} events identified")
         return results
-
+    
     async def triage_data(self, data_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Triage data to filter out irrelevant items using intelligent text processing."""
         await self._ensure_kernel_initialized()
         relevant_items = []
-        
         for item in data_items:
             try:
-                # Prepare text for analysis
-                text = ""
-                if item.get('type') == 'news':
-                    text = f"{item.get('title', '')} {item.get('summary', '')}"
-                elif item.get('data_type') == 'filing':
-                    text = item.get('text', '')
-                elif item.get('type') == 'procurement':
-                    text = f"{item.get('title', '')} {item.get('description', '')}"
-                
-                if not text.strip():
+                text = str(item.get('description', '')).strip()
+                scraped_label = "(SCRAPED)" if item.get('raw_data', {}).get('content_enhanced') else "(SUMMARY_ONLY)"
+                print(f"[ANALYST][TRIAGE] Input: '{item.get('title', 'NO TITLE')[:60]}' | Length: {len(text)} | {scraped_label}")
+                if not text:
+                    print(f"[ANALYST][TRIAGE] Skipping empty content: {item.get('title', 'NO TITLE')[:60]}")
                     continue
-                
-                # For short texts, analyze directly
                 if len(text) <= self.chunk_size:
                     result = await self._invoke_function_safely('triage', text)
                     if result is None:
+                        print(f"[ANALYST][TRIAGE] No result for: '{item.get('title', '')[:60]}'")
                         continue
-                    
-                    # Use safe JSON parsing
                     triage_result = self._safe_json_parse(result, "triage_analysis")
                     if triage_result and triage_result.get('is_relevant', False):
                         item['triage_result'] = triage_result
                         relevant_items.append(item)
+                        print(f"[ANALYST][TRIAGE] Relevant: '{item.get('title', '')[:60]}'")
                 else:
-                    # For long texts, use intelligent chunking
                     chunks = self._create_intelligent_chunks(text)
-                    prioritized_chunks = self._prioritize_chunks(chunks)[:3]  # Analyze top 3 chunks for triage
-                    
-                    # Analyze each prioritized chunk
+                    prioritized_chunks = self._prioritize_chunks(chunks)[:3]
                     for chunk in prioritized_chunks:
                         result = await self._invoke_function_safely('triage', chunk)
                         if result is None:
                             continue
-                        
-                        # Use safe JSON parsing
                         triage_result = self._safe_json_parse(result, "triage_chunk_analysis")
                         if triage_result and triage_result.get('is_relevant', False):
                             item['triage_result'] = triage_result
                             item['analyzed_chunks'] = len(chunks)
                             relevant_items.append(item)
-                            print(f"✅ Found relevant content in {len(chunks)}-chunk document")
+                            print(f"[ANALYST][TRIAGE] Relevant chunk found for: {item.get('title', '')[:60]}")
                             break
-                    
             except Exception as e:
                 print(f"Error during triage for item: {e}")
                 continue
-        
         print(f"Triage complete: {len(relevant_items)} relevant items found out of {len(data_items)}")
         return relevant_items
 
     async def analyze_financial_events(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Analyze items for financial events using intelligent chunking."""
         await self._ensure_kernel_initialized()
         financial_events = []
-        
         for item in items:
             if item.get('triage_result', {}).get('category') in ['News Article', 'SEC Filing']:
                 try:
-                    text = ""
-                    if item.get('type') == 'news':
-                        text = f"{item.get('title', '')} {item.get('summary', '')}"
-                    elif item.get('data_type') == 'filing':
-                        text = item.get('text', '')
-                    
-                    if not text.strip():
+                    text = str(item.get('description', '')).strip()
+                    scraped_label = "(SCRAPED)" if item.get('raw_data', {}).get('content_enhanced') else "(SUMMARY_ONLY)"
+                    print(f"[ANALYST][FINANCIAL] Processing: '{item.get('title', '')[:60]}' | Length: {len(text)} | {scraped_label}")
+                    if not text:
                         continue
-                    
-                    # Use intelligent chunking for analysis
                     if len(text) <= self.chunk_size:
-                        # Short text - analyze directly
                         result = await self._invoke_function_safely('financial', text)
                         if result is None:
+                            print(f"[ANALYST][FINANCIAL] No result: '{item.get('title', '')[:60]}'")
                             continue
-                        
                         financial_result = self._safe_json_parse(result, "financial_analysis")
                         if financial_result and financial_result.get('event_found', False):
                             value_usd = financial_result.get('value_usd', 0)
                             if value_usd is not None and value_usd >= 10_000_000:
                                 item['financial_analysis'] = financial_result
                                 financial_events.append(item)
+                                print(f"[ANALYST][FINANCIAL] Event >=$10M: '{item.get('title', '')[:60]}' (${value_usd:,})")
                     else:
-                        # Long text - use map-reduce pattern
                         chunks = self._create_intelligent_chunks(text)
+                        print(f"[ANALYST][FINANCIAL] {len(chunks)} chunks for: '{item.get('title', '')[:60]}'")
                         chunk_results = await self._analyze_chunks_with_map_reduce(chunks, 'financial')
-                        
                         if chunk_results:
-                            # Use the synthesized result
                             synthesized = chunk_results[0]
                             if synthesized.get('event_found', False):
                                 value_usd = synthesized.get('value_usd', 0)
@@ -510,48 +403,41 @@ class AnalystAgent:
                                         'analysis_method': 'map_reduce'
                                     }
                                     financial_events.append(item)
-                                    print(f"✅ Found financial event (${value_usd:,}) using {len(chunks)} chunks")
-                        
+                                    print(f"[ANALYST][FINANCIAL] Event >=$10M (chunks): '{item.get('title', '')[:60]}' (${value_usd:,})")
                 except Exception as e:
                     print(f"Error during financial analysis: {e}")
                     continue
-        
         print(f"Financial analysis complete: {len(financial_events)} events >= $10M found")
         return financial_events
 
     async def analyze_procurement(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Analyze procurement notices using intelligent chunking."""
         await self._ensure_kernel_initialized()
         procurement_events = []
-        
         for item in items:
             if item.get('type') == 'procurement':
                 try:
-                    text = f"{item.get('title', '')} {item.get('description', '')}"
-                    
-                    if not text.strip():
+                    text = str(item.get('description', '')).strip()
+                    scraped_label = "(SCRAPED)" if item.get('raw_data', {}).get('content_enhanced') else "(SUMMARY_ONLY)"
+                    print(f"[ANALYST][PROCUREMENT] Processing: '{item.get('title', '')[:60]}' | Length: {len(text)} | {scraped_label}")
+                    if not text:
                         continue
-                    
-                    # Use intelligent chunking for analysis
                     if len(text) <= self.chunk_size:
-                        # Short text - analyze directly
                         result = await self._invoke_function_safely('procurement', text)
                         if result is None:
+                            print(f"[ANALYST][PROCUREMENT] No result: '{item.get('title', '')[:60]}'")
                             continue
-                        
                         procurement_result = self._safe_json_parse(result, "procurement_analysis")
                         if procurement_result and procurement_result.get('is_relevant', False):
                             value_usd = procurement_result.get('value_usd', 0)
                             if value_usd is not None and value_usd >= 10_000_000:
                                 item['procurement_analysis'] = procurement_result
                                 procurement_events.append(item)
+                                print(f"[ANALYST][PROCUREMENT] Relevant procurement >=$10M: '{item.get('title', '')[:60]}' (${value_usd:,})")
                     else:
-                        # Long text - use map-reduce pattern
                         chunks = self._create_intelligent_chunks(text)
+                        print(f"[ANALYST][PROCUREMENT] {len(chunks)} chunks for: '{item.get('title', '')[:60]}'")
                         chunk_results = await self._analyze_chunks_with_map_reduce(chunks, 'procurement')
-                        
                         if chunk_results:
-                            # Use the synthesized result
                             synthesized = chunk_results[0]
                             if synthesized.get('is_relevant', False):
                                 value_usd = synthesized.get('value_usd', 0)
@@ -562,49 +448,42 @@ class AnalystAgent:
                                         'analysis_method': 'map_reduce'
                                     }
                                     procurement_events.append(item)
-                                    print(f"✅ Found procurement event (${value_usd:,}) using {len(chunks)} chunks")
-                        
+                                    print(f"[ANALYST][PROCUREMENT] Relevant procurement >=$10M (chunks): '{item.get('title', '')[:60]}' (${value_usd:,})")
                 except Exception as e:
                     print(f"Error during procurement analysis: {e}")
                     continue
-        
         print(f"Procurement analysis complete: {len(procurement_events)} relevant notices >= $10M found")
         return procurement_events
 
     async def analyze_earnings_calls(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Analyze earnings call transcripts using intelligent chunking."""
         await self._ensure_kernel_initialized()
         earnings_events = []
-        
         for item in items:
             if (item.get('data_type') == 'filing' and 
                 item.get('type') in ['10-Q', '10-K']):
                 try:
-                    text = item.get('text', '')
-                    
-                    if not text.strip():
+                    text = str(item.get('description', '')).strip()
+                    scraped_label = "(SCRAPED)" if item.get('raw_data', {}).get('content_enhanced') else "(SUMMARY_ONLY)"
+                    print(f"[ANALYST][EARNINGS] Processing: '{item.get('title', '')[:60]}' | Length: {len(text)} | {scraped_label}")
+                    if not text:
                         continue
-                    
-                    # Use intelligent chunking for analysis
                     if len(text) <= self.chunk_size:
-                        # Short text - analyze directly
                         result = await self._invoke_function_safely('earnings', text)
                         if result is None:
+                            print(f"[ANALYST][EARNINGS] No result: '{item.get('title', '')[:60]}'")
                             continue
-                        
                         earnings_result = self._safe_json_parse(result, "earnings_analysis")
                         if earnings_result and earnings_result.get('guidance_found', False):
                             value_usd = earnings_result.get('value_usd', 0)
                             if value_usd is not None and value_usd >= 10_000_000:
                                 item['earnings_analysis'] = earnings_result
                                 earnings_events.append(item)
+                                print(f"[ANALYST][EARNINGS] Earnings guidance >=$10M: '{item.get('title', '')[:60]}' (${value_usd:,})")
                     else:
-                        # Long text - use map-reduce pattern
                         chunks = self._create_intelligent_chunks(text)
+                        print(f"[ANALYST][EARNINGS] {len(chunks)} chunks for: '{item.get('title', '')[:60]}'")
                         chunk_results = await self._analyze_chunks_with_map_reduce(chunks, 'earnings')
-                        
                         if chunk_results:
-                            # Use the synthesized result
                             synthesized = chunk_results[0]
                             if synthesized.get('guidance_found', False):
                                 value_usd = synthesized.get('value_usd', 0)
@@ -615,75 +494,102 @@ class AnalystAgent:
                                         'analysis_method': 'map_reduce'
                                     }
                                     earnings_events.append(item)
-                                    print(f"✅ Found earnings guidance (${value_usd:,}) using {len(chunks)} chunks")
-                        
+                                    print(f"[ANALYST][EARNINGS] Earnings guidance >=$10M (chunks): '{item.get('title', '')[:60]}' (${value_usd:,})")
                 except Exception as e:
                     print(f"Error during earnings call analysis: {e}")
                     continue
-        
         print(f"Earnings call analysis complete: {len(earnings_events)} guidance items >= $10M found")
         return earnings_events
 
     async def generate_insights(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Generate insights for all events."""
+        """
+        Generate insights for all events. Company profile, buyers, projects, and alumni are now factored in.
+        """
         await self._ensure_kernel_initialized()
         insights = []
-        
         for event in events:
             try:
-                # Prepare data for insight generation
+                company_profile = self.company_profiles.get(event.get('company', ''), {})
                 insight_data = {
                     'company': event.get('company', ''),
                     'title': event.get('title', ''),
                     'source': event.get('source', ''),
-                    'type': event.get('type', '')
+                    'type': event.get('type', ''),
+                    'company_profile': company_profile,
+                    'key_buyers': company_profile.get('key_buyers', []),
+                    'projects': company_profile.get('projects', []),
+                    'protiviti_alumni': company_profile.get('protiviti_alumni', []),
                 }
-                
-                # Add analysis results
                 if 'financial_analysis' in event:
                     insight_data.update(event['financial_analysis'])
                 elif 'procurement_analysis' in event:
                     insight_data.update(event['procurement_analysis'])
                 elif 'earnings_analysis' in event:
                     insight_data.update(event['earnings_analysis'])
-                
-                # Generate insight
                 result = await self._invoke_function_safely('insight', json.dumps(insight_data))
                 if result is None:
                     continue
-                
-                # Parse result safely
                 insight_result = self._safe_json_parse(result, "insight_generation")
                 if insight_result:
                     event['insights'] = insight_result
                     insights.append(event)
                 else:
                     print(f"Warning: Could not parse insight for event: {event.get('title', 'Unknown')}")
-                    
             except Exception as e:
                 print(f"Error generating insight: {e}")
                 continue
-        
+        from collections import defaultdict
+        company_map = defaultdict(list)
+        for ev in insights:
+            company_map[ev['company']].append(ev)
+        for company, evts in company_map.items():
+            profile = self.company_profiles.get(company, {})
+            summary_input = {
+                'company': company,
+                'profile': profile,
+                'events': [{
+                    'title': e['title'], 'insights': e.get('insights', {})
+                } for e in evts]
+            }
+            summary_json = json.dumps(summary_input)
+            summary = await self._invoke_function_safely('company_takeaway', summary_json)
+            for e in evts:
+                e['company_takeaway'] = summary
         print(f"Insight generation complete: {len(insights)} insights generated")
         return insights
 
     async def analyze_all_data(self, data_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Main method to analyze all data through the complete pipeline."""
         print(f"Starting analysis of {len(data_items)} data items...")
-        
-        # Step 1: Triage
         relevant_items = await self.triage_data(data_items)
-        
-        # Step 2: Specialized analysis
         financial_events = await self.analyze_financial_events(relevant_items)
         procurement_events = await self.analyze_procurement(relevant_items)
         earnings_events = await self.analyze_earnings_calls(relevant_items)
-        
-        # Step 3: Combine all events
         all_events = financial_events + procurement_events + earnings_events
-        
-        # Step 4: Generate insights
         final_insights = await self.generate_insights(all_events)
-        
         print(f"Analysis complete: {len(final_insights)} high-impact events identified")
         return final_insights
+
+if __name__ == "__main__":
+    import asyncio
+    class DummySelf(AnalystAgent):
+        async def _ensure_kernel_initialized(self): pass
+        async def _invoke_function_safely(self, name, payload):
+            if name == 'insight':
+                return '{"what_happened": "Event:", "why_it_matters": "Matters.", "consulting_angle": "Sell", "priority": "high", "timeline": "immediate", "service_categories": ["Advisory"]}'
+            elif name == 'company_takeaway':
+                return '{"summary": "Use buyers and alumni on new project. Upsell opportunities: risk management."}'
+    agent = DummySelf()
+    agent.company_profiles = {
+        'Capital One': {
+            'key_buyers': [{"name": "Jane Buyer"}],
+            'projects': [{"name": "Audit2023"}],
+            'protiviti_alumni': [{"name": "Al Smith"}]
+        }
+    }
+    sample = [{
+        'company': 'Capital One',
+        'title': 'Event X'
+    }]
+    out = asyncio.run(agent.generate_insights(sample))
+    assert 'company_takeaway' in out[0] and 'summary' in out[0]['company_takeaway']
+    print("✅ AnalystAgent company_takeaway injection test passed.")

@@ -1,0 +1,12 @@
+---
+description: Treat every task like a senior Staff SWE—recon first, plan, execute, verify.
+alwaysApply: true
+---
+
+- **Repository Recon Digest** (≤ 200 lines) at the start of any work:
+  - high‑level architecture
+  - key modules & dependencies
+  - tech‑debt hot‑spots
+- Follow the **Recon → Plan → Execute → Verify** loop for every change.
+- Surface architectural risks and scalability concerns early.
+- Escalate only when the “clarification threshold” is hit (requirements unclear).

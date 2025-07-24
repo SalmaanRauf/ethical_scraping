@@ -1,0 +1,39 @@
+{
+  "company_name": "Navy Federal Credit Union",
+  "industry": "Financial Services",
+  "revenue": "$12.8B",
+  "size": "Large",
+  "key_buyers": ["Department of Defense", "Veterans Affairs", "Military Branches"],
+  "alumni_contacts": ["Amanda Thompson", "James Davis", "Maria Garcia"],
+  "active_opportunities": ["Digital Banking Platform", "Cybersecurity", "Member Experience"],
+  "projects": [
+    {
+      "name": "Digital Banking Transformation",
+      "value": "$35M",
+      "status": "Active",
+      "description": "Modernizing online and mobile banking"
+    },
+    {
+      "name": "Cybersecurity Enhancement",
+      "value": "$20M",
+      "status": "Active",
+      "description": "Advanced security and fraud prevention"
+    }
+  ],
+  "recent_events": [
+    {
+      "date": "2024-01-18",
+      "type": "Technology",
+      "description": "New mobile banking app launch"
+    },
+    {
+      "date": "2024-01-08",
+      "type": "Security",
+      "description": "Cybersecurity framework implementation"
+    }
+  ],
+  "competitors": ["USAA", "PenFed", "Other Military Credit Unions"],
+  "regulatory_environment": "NCUA Regulated",
+  "technology_focus": ["Digital Banking", "Cybersecurity", "Member Experience"],
+  "compliance_priorities": ["NCUA Requirements", "Military Compliance", "Data Protection"]
+} 

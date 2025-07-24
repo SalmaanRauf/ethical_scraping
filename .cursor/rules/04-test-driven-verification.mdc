@@ -1,0 +1,13 @@
+---
+description: Generate tests first; run the full suite; summarise coverage deltas.
+globs:
+  - "src/**/*"
+alwaysApply: false
+---
+
+When editing or adding code under `src/`:
+
+1. Write failing **unit + integration tests** for the desired behaviour.
+2. Run the entire suite; confirm it fails for the right reason.
+3. Implement code until all tests and linters pass.
+4. Report coverage (% change) and note any uncovered edge‑cases.

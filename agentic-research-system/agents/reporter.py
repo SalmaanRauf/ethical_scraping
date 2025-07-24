@@ -259,3 +259,273 @@ class Reporter:
         except Exception as e:
             print(f"❌ Error getting report summary: {e}")
             return {} 
+
+def format_company_briefing(self, analysis_result: List[Dict], company_slug: str) -> Dict:
+    """
+    Format analysis results into a comprehensive company briefing.
+    
+    Args:
+        analysis_result: List of analyzed events
+        company_slug: Canonical company slug
+        
+    Returns:
+        Dictionary containing formatted briefing
+    """
+    try:
+        # Get company display name
+        from config.company_config import COMPANY_DISPLAY_NAMES
+        display_name = COMPANY_DISPLAY_NAMES.get(company_slug, company_slug)
+        
+        # Format briefing content
+        briefing_content = self._create_briefing_content(analysis_result, display_name)
+        
+        return {
+            'company_name': display_name,
+            'company_slug': company_slug,
+            'briefing': briefing_content,
+            'status': 'success',
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        print(f"Error formatting briefing: {e}")
+        return {
+            'error': str(e),
+            'company_slug': company_slug,
+            'status': 'failed'
+        }
+    
+    def _create_briefing_content(self, analysis_result: List[Dict], company_name: str) -> str:
+        """Create formatted briefing content with all required fields."""
+        
+        if not analysis_result:
+            return f"📊 **{company_name} Intelligence Briefing**\n\n"
+                   f"No significant events or findings were detected in the recent data. "
+                   f"This could indicate a period of relative stability or limited recent activity."
+        
+        # Group events by type
+        events_by_type = {}
+        for event in analysis_result:
+            event_type = event.get('event_type', 'Other')
+            if event_type not in events_by_type:
+                events_by_type[event_type] = []
+            events_by_type[event_type].append(event)
+        
+        # Create briefing sections
+        sections = []
+        
+        # Executive Summary
+        summary = self._create_executive_summary(analysis_result, company_name)
+        sections.append(summary)
+        
+        # Key Events by Category with All Required Fields
+        for event_type, events in events_by_type.items():
+            section = self._create_event_section_with_all_fields(event_type, events)
+            sections.append(section)
+        
+        # Consulting Opportunities
+        opportunities = self._create_consulting_opportunities(analysis_result)
+        sections.append(opportunities)
+        
+        # Industry Overview
+        industry_overview = self._create_industry_overview_section(analysis_result)
+        sections.append(industry_overview)
+        
+        # Company Profile Snippets
+        profile_snippets = self._create_company_profile_snippets(analysis_result)
+        sections.append(profile_snippets)
+        
+        # Sources
+        sources = self._create_sources_section(analysis_result)
+        sections.append(sources)
+        
+        return "\n\n".join(sections)
+    
+    def _create_executive_summary(self, analysis_result: List[Dict], company_name: str) -> str:
+        """Create executive summary section."""
+        total_events = len(analysis_result)
+        high_priority = len([e for e in analysis_result if e.get('priority') == 'high'])
+        
+        summary = f"📊 **{company_name} Intelligence Briefing**\n\n"
+        summary += f"**Executive Summary**\n"
+        summary += f"• Total Events Analyzed: {total_events}\n"
+        summary += f"• High Priority Events: {high_priority}\n"
+        summary += f"• Analysis Period: Last 30 days\n\n"
+        
+        return summary
+    
+    def _create_event_section(self, event_type: str, events: List[Dict]) -> str:
+        """Create section for specific event type."""
+        section = f"**{event_type.upper()} EVENTS**\n\n"
+        
+        for event in events:
+            title = event.get('title', 'Unknown Event')
+            what_happened = event.get('insights', {}).get('what_happened', '')
+            why_matters = event.get('insights', {}).get('why_it_matters', '')
+            consulting_angle = event.get('insights', {}).get('consulting_angle', '')
+            
+            section += f"**{title}**\n"
+            if what_happened:
+                section += f"• What Happened: {what_happened}\n"
+            if why_matters:
+                section += f"• Why It Matters: {why_matters}\n"
+            if consulting_angle:
+                section += f"• Consulting Opportunity: {consulting_angle}\n"
+            section += "\n"
+        
+        return section
+    
+    def _create_consulting_opportunities(self, analysis_result: List[Dict]) -> str:
+        """Create consulting opportunities section."""
+        opportunities = []
+        
+        for event in analysis_result:
+            consulting_angle = event.get('insights', {}).get('consulting_angle', '')
+            if consulting_angle:
+                opportunities.append(consulting_angle)
+        
+        if not opportunities:
+            return ""
+        
+        section = "**CONSULTING OPPORTUNITIES**\n\n"
+        for i, opportunity in enumerate(opportunities[:5], 1):  # Limit to top 5
+            section += f"{i}. {opportunity}\n"
+        
+        return section
+    
+    def _create_sources_section(self, analysis_result: List[Dict]) -> str:
+        """Create sources section."""
+        sources = set()
+        
+        for event in analysis_result:
+            source_url = event.get('source_url') or event.get('url') or event.get('link')
+            if source_url:
+                sources.add(source_url)
+        
+        if not sources:
+            return ""
+        
+        section = "**SOURCES**\n\n"
+        for source in list(sources)[:10]:  # Limit to top 10
+            section += f"• {source}\n"
+        
+        return section 
+
+    def _create_event_section_with_all_fields(self, event_type: str, events: List[Dict]) -> str:
+        """Create section for specific event type with all required fields."""
+        section = f"**{event_type.upper()} EVENTS**\n\n"
+        
+        for event in events:
+            title = event.get('title', 'Unknown Event')
+            insights = event.get('insights', {})
+            
+            # Extract all required fields
+            what_happened = insights.get('what_happened', '')
+            why_matters = insights.get('why_it_matters', '')
+            consulting_angle = insights.get('consulting_angle', '')
+            need_type = insights.get('need_type', '')
+            service_line = insights.get('service_line', '')
+            urgency = insights.get('urgency', '')
+            industry_overview = insights.get('industry_overview', '')
+            
+            section += f"**{title}**\n"
+            
+            if what_happened:
+                section += f"• **What Happened:** {what_happened}\n"
+            
+            if why_matters:
+                section += f"• **Why It Matters:** {why_matters}\n"
+            
+            if consulting_angle:
+                section += f"• **Consulting Angle:** {consulting_angle}\n"
+            
+            if need_type:
+                section += f"• **Need Type:** {need_type.title()}\n"
+            
+            if service_line:
+                section += f"• **Service Line:** {service_line}\n"
+            
+            if urgency:
+                section += f"• **Urgency:** {urgency}\n"
+            
+            if industry_overview:
+                section += f"• **Industry Context:** {industry_overview}\n"
+            
+            # Add source information
+            url = event.get('url', '')
+            if url:
+                section += f"• **Source:** {url}\n"
+            
+            section += "\n---\n\n"
+        
+        return section
+    
+    def _create_industry_overview_section(self, analysis_result: List[Dict]) -> str:
+        """Create industry overview section from Bing data and analysis."""
+        section = "**INDUSTRY OVERVIEW**\n\n"
+        
+        # Collect industry insights from all events
+        industry_insights = []
+        for event in analysis_result:
+            insights = event.get('insights', {})
+            industry_overview = insights.get('industry_overview', '')
+            if industry_overview:
+                industry_insights.append(industry_overview)
+        
+        if industry_insights:
+            # Deduplicate and summarize industry insights
+            unique_insights = list(set(industry_insights))
+            for insight in unique_insights[:5]:  # Limit to top 5 insights
+                section += f"• {insight}\n"
+        else:
+            section += "• Industry context analysis pending additional data\n"
+        
+        return section
+    
+    def _create_company_profile_snippets(self, analysis_result: List[Dict]) -> str:
+        """Create company profile snippets section."""
+        section = "**COMPANY PROFILE SNIPPETS**\n\n"
+        
+        # Extract profile data from events
+        active_opportunities = []
+        key_buyers = []
+        alumni_contacts = []
+        
+        for event in analysis_result:
+            company_profile = event.get('company_profile', {})
+            
+            # Extract opportunities
+            if 'opportunities' in company_profile:
+                active_opportunities.extend(company_profile['opportunities'])
+            
+            # Extract key buyers
+            if 'key_buyers' in company_profile:
+                key_buyers.extend(company_profile['key_buyers'])
+            
+            # Extract alumni contacts
+            if 'alumni_contacts' in company_profile:
+                alumni_contacts.extend(company_profile['alumni_contacts'])
+        
+        # Format sections
+        if active_opportunities:
+            section += "**Active Opportunities:**\n"
+            for opp in active_opportunities[:3]:  # Limit to top 3
+                section += f"• {opp}\n"
+            section += "\n"
+        
+        if key_buyers:
+            section += "**Key Buyers:**\n"
+            for buyer in key_buyers[:3]:  # Limit to top 3
+                section += f"• {buyer}\n"
+            section += "\n"
+        
+        if alumni_contacts:
+            section += "**Alumni Contacts:**\n"
+            for contact in alumni_contacts[:3]:  # Limit to top 3
+                section += f"• {contact}\n"
+            section += "\n"
+        
+        if not any([active_opportunities, key_buyers, alumni_contacts]):
+            section += "• Company profile data not available\n"
+        
+        return section 

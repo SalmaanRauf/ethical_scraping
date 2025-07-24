@@ -1,0 +1,39 @@
+{
+  "company_name": "Federal National Mortgage Association",
+  "industry": "Financial Services",
+  "revenue": "$85.2B",
+  "size": "Large",
+  "key_buyers": ["Federal Housing Finance Agency", "Treasury Department", "HUD"],
+  "alumni_contacts": ["Sarah Johnson", "Michael Chen", "Lisa Rodriguez"],
+  "active_opportunities": ["Digital Mortgage Platform", "Risk Management", "Compliance Automation"],
+  "projects": [
+    {
+      "name": "Digital Mortgage Transformation",
+      "value": "$50M",
+      "status": "Active",
+      "description": "Modernizing mortgage processing systems"
+    },
+    {
+      "name": "Risk Management Enhancement",
+      "value": "$25M", 
+      "status": "Planning",
+      "description": "Advanced risk modeling and compliance"
+    }
+  ],
+  "recent_events": [
+    {
+      "date": "2024-01-15",
+      "type": "Regulatory",
+      "description": "FHFA oversight requirements update"
+    },
+    {
+      "date": "2024-01-10", 
+      "type": "Technology",
+      "description": "Digital mortgage platform launch"
+    }
+  ],
+  "competitors": ["Freddie Mac", "Ginnie Mae", "Private Mortgage Insurers"],
+  "regulatory_environment": "Highly Regulated",
+  "technology_focus": ["Digital Transformation", "AI/ML", "Cloud Migration"],
+  "compliance_priorities": ["FHFA Requirements", "SEC Reporting", "Data Privacy"]
+} 
