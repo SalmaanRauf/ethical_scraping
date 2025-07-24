@@ -1,7 +1,7 @@
 import asyncio
 import re
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from bs4 import BeautifulSoup
 from agents.scraper_agent import ScraperAgent
 from config.config import AppConfig

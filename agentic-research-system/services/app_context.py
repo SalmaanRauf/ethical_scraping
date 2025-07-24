@@ -91,26 +91,50 @@ class AppContext:
     @property
     def initialized(self):
         return self._instance.initialized
+    
+    @initialized.setter
+    def initialized(self, value):
+        self._instance.initialized = value
 
     @property
     def profile_loader(self):
         return self._instance.profile_loader
+    
+    @profile_loader.setter
+    def profile_loader(self, value):
+        self._instance.profile_loader = value
 
     @property
     def scraper_agent(self):
         return self._instance.scraper_agent
+    
+    @scraper_agent.setter
+    def scraper_agent(self, value):
+        self._instance.scraper_agent = value
 
     @property
     def kernel(self):
         return self._instance.kernel
+    
+    @kernel.setter
+    def kernel(self, value):
+        self._instance.kernel = value
 
     @property
     def agents(self):
         return self._instance.agents
+    
+    @agents.setter
+    def agents(self, value):
+        self._instance.agents = value
 
     @property
     def extractors(self):
         return self._instance.extractors
+    
+    @extractors.setter
+    def extractors(self, value):
+        self._instance.extractors = value
 
 # Global instance of the AppContext
 app_context = AppContext()
