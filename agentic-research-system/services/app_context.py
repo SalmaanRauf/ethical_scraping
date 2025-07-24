@@ -28,7 +28,12 @@ class AppContext:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(AppContext, cls).__new__(cls)
-            cls._instance.initialized = False
+            cls._instance._initialized = False
+            cls._instance._profile_loader = None
+            cls._instance._scraper_agent = None
+            cls._instance._kernel = None
+            cls._instance._agents = {}
+            cls._instance._extractors = {}
         return cls._instance
 
     async def initialize(self):
@@ -90,51 +95,51 @@ class AppContext:
 
     @property
     def initialized(self):
-        return self._instance.initialized
+        return getattr(self, '_initialized', False)
     
     @initialized.setter
     def initialized(self, value):
-        self._instance.initialized = value
+        self._initialized = value
 
     @property
     def profile_loader(self):
-        return self._instance.profile_loader
+        return getattr(self, '_profile_loader', None)
     
     @profile_loader.setter
     def profile_loader(self, value):
-        self._instance.profile_loader = value
+        self._profile_loader = value
 
     @property
     def scraper_agent(self):
-        return self._instance.scraper_agent
+        return getattr(self, '_scraper_agent', None)
     
     @scraper_agent.setter
     def scraper_agent(self, value):
-        self._instance.scraper_agent = value
+        self._scraper_agent = value
 
     @property
     def kernel(self):
-        return self._instance.kernel
+        return getattr(self, '_kernel', None)
     
     @kernel.setter
     def kernel(self, value):
-        self._instance.kernel = value
+        self._kernel = value
 
     @property
     def agents(self):
-        return self._instance.agents
+        return getattr(self, '_agents', {})
     
     @agents.setter
     def agents(self, value):
-        self._instance.agents = value
+        self._agents = value
 
     @property
     def extractors(self):
-        return self._instance.extractors
+        return getattr(self, '_extractors', {})
     
     @extractors.setter
     def extractors(self, value):
-        self._instance.extractors = value
+        self._extractors = value
 
 # Global instance of the AppContext
 app_context = AppContext()
