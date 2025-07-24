@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import Optional, Dict, Any, Tuple  # <--- Add Tuple typing
+from typing import Optional, Dict, Any, Tuple
 from azure.ai.projects import AIProjectClient
 from azure.ai.agents.models import MessageRole, BingGroundingTool
 from azure.identity import DefaultAzureCredential
@@ -131,6 +131,7 @@ class BingGroundingAgent:
             # Note: threads/messages are ephemeral by default, no need to clean
 
         return {"summary": summary.strip(), "citations_md": bullets.strip()}
+    
     @staticmethod
     def _parse_output(output_text: str, citations_md: list) -> Tuple[str, str]:
         """

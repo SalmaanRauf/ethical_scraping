@@ -183,6 +183,18 @@ Copy all company profile JSON files:
 ### **Step 12: Environment Variables**
 Add these to your `.env` file:
 ```bash
+# Azure AI Foundry Configuration (for Bing Grounding)
+OPENAI_API_KEY=your_openai_api_key_here
+BASE_URL=https://your-resource.openai.azure.com/
+PROJECT_ID=your_project_id
+API_VERSION=2024-02-15-preview
+MODEL=gpt-4o
+
+# Azure AI Foundry Agents for Bing Grounding
+PROJECT_ENDPOINT=https://foundry-dev-your-project.ai.azure.com/
+MODEL_DEPLOYMENT_NAME=your_deployment_name
+AZURE_BING_CONNECTION_ID=/subscriptions/your-subscription-id/connections/your-bing-connection-id
+
 # Chainlit
 CHAINLIT_PORT=8000
 

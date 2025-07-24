@@ -13,16 +13,16 @@ class Config:
     GNEWS_API_KEY = os.getenv("GNEWS_API_KEY")
     SAM_API_KEY = os.getenv("SAM_API_KEY")
 
-    # AI Analysis APIs
+    # AI Analysis APIs (Azure AI Foundry)
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-    OPENAI_API_MODEL = os.getenv("OPENAI_API_MODEL", "gpt-4-turbo")
-    AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-    AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-    AZURE_OPENAI_DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4-turbo")
+    BASE_URL = os.getenv("BASE_URL")
+    PROJECT_ID = os.getenv("PROJECT_ID")
+    API_VERSION = os.getenv("API_VERSION", "2024-02-15-preview")
+    MODEL = os.getenv("MODEL", "gpt-4o")
 
     # Azure AI Foundry Agents for Bing Grounding
-    AZURE_AI_PROJECT_ENDPOINT = os.getenv("AZURE_AI_PROJECT_ENDPOINT")
-    AZURE_AI_MODEL_DEPLOYMENT_NAME = os.getenv("AZURE_AI_MODEL_DEPLOYMENT_NAME")
+    PROJECT_ENDPOINT = os.getenv("PROJECT_ENDPOINT")
+    MODEL_DEPLOYMENT_NAME = os.getenv("MODEL_DEPLOYMENT_NAME")
     AZURE_BING_CONNECTION_ID = os.getenv("AZURE_BING_CONNECTION_ID")
 
     # Validation APIs
@@ -56,10 +56,10 @@ class Config:
         """
         required_keys = [
             "SEC_API_KEY", "GNEWS_API_KEY", 
-            "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_DEPLOYMENT_NAME",
+            "OPENAI_API_KEY", "BASE_URL", "PROJECT_ID", "API_VERSION", "MODEL",
             "GOOGLE_SEARCH_API_KEY", "GOOGLE_CSE_ID",
-            # Azure AI Foundry Agents keys - required if using that path
-            "AZURE_AI_PROJECT_ENDPOINT", "AZURE_AI_MODEL_DEPLOYMENT_NAME", "AZURE_BING_CONNECTION_ID"
+            # Azure AI Foundry Agents keys - required for Bing grounding
+            "PROJECT_ENDPOINT", "MODEL_DEPLOYMENT_NAME", "AZURE_BING_CONNECTION_ID"
         ]
         missing_keys = [key for key in required_keys if not getattr(cls, key)]
         

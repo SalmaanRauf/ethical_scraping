@@ -16,8 +16,13 @@ def check_environment():
     """Check if required environment variables are set."""
     required_vars = [
         'OPENAI_API_KEY',
-        'AZURE_OPENAI_API_KEY', 
-        'AZURE_OPENAI_ENDPOINT'
+        'BASE_URL',
+        'PROJECT_ID',
+        'API_VERSION',
+        'MODEL',
+        'PROJECT_ENDPOINT',
+        'MODEL_DEPLOYMENT_NAME',
+        'AZURE_BING_CONNECTION_ID'
     ]
     
     missing_vars = []

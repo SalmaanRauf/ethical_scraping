@@ -10,13 +10,18 @@ import os
 import json
 from datetime import datetime
 
-# Mock the API keys to avoid errors
+# Mock the API keys to avoid errors (Azure AI Foundry)
 os.environ['SEC_API_KEY'] = 'mock_key'
 os.environ['GNEWS_API_KEY'] = 'mock_key'
 os.environ['SAM_API_KEY'] = 'mock_key'
 os.environ['OPENAI_API_KEY'] = 'mock_key'
-os.environ['AZURE_OPENAI_API_KEY'] = 'mock_key'
-os.environ['AZURE_OPENAI_ENDPOINT'] = 'mock_endpoint'
+os.environ['BASE_URL'] = 'mock_endpoint'
+os.environ['PROJECT_ID'] = 'mock_project'
+os.environ['API_VERSION'] = '2024-02-15-preview'
+os.environ['MODEL'] = 'gpt-4o'
+os.environ['PROJECT_ENDPOINT'] = 'mock_project_endpoint'
+os.environ['MODEL_DEPLOYMENT_NAME'] = 'mock_deployment'
+os.environ['AZURE_BING_CONNECTION_ID'] = 'mock_bing_connection'
 
 def print_step(step_num, title):
     """Print a formatted step header."""

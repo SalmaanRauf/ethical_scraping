@@ -56,8 +56,8 @@ class AppContext:
             "archivist": Archivist(),
             "reporter": Reporter(),
             "bing_grounding_agent": BingGroundingAgent(
-                project_endpoint=AppConfig.AZURE_AI_PROJECT_ENDPOINT,
-                model_deployment_name=AppConfig.AZURE_AI_MODEL_DEPLOYMENT_NAME,
+                project_endpoint=AppConfig.PROJECT_ENDPOINT,
+                model_deployment_name=AppConfig.MODEL_DEPLOYMENT_NAME,
                 azure_bing_connection_id=AppConfig.AZURE_BING_CONNECTION_ID,
                 credential=DefaultAzureCredential() # Use DefaultAzureCredential for authentication
             )
