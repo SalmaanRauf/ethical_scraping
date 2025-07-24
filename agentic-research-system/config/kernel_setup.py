@@ -33,7 +33,7 @@ class ATLASClient:
        return chat
 # Load environment variables
 load_dotenv()
-api_key = os.getenv("OPENAI_API_Key")
+api_key = os.getenv("OPENAI_API_KEY")
 base_url = os.getenv("BASE_URL")
 api_version = os.getenv("API_VERSION")
 model = os.getenv("MODEL")
@@ -43,7 +43,7 @@ async def initialize_kernel():
    # Validate required environment variables
    missing_vars = []
    for var_name, var_value in [
-       ("OPENAI_API_Key", api_key),
+       ("OPENAI_API_KEY", api_key),
        ("BASE_URL", base_url),
        ("API_VERSION", api_version),
        ("MODEL", model),

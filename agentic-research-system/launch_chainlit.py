@@ -83,7 +83,7 @@ def main():
         
         # Import and run chainlit
         import chainlit as cl
-        from main import start, handle_message, end
+        from chainlit_app.main import start, handle_message, end
         
         # Set up the Chainlit app
         cl.setup(

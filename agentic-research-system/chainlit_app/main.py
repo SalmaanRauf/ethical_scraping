@@ -22,7 +22,7 @@ async def start():
 
     # Get the company resolver to provide suggestions to the user.
     resolver = app_context.agents['company_resolver']
-    company_names = list(resolver.company_profiles.keys())
+    company_names = list(resolver.display_names.values())
 
     await cl.Message(
         content="Welcome to the Company Intelligence Briefing System! "
