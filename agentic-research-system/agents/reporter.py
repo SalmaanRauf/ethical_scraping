@@ -299,9 +299,9 @@ def format_company_briefing(self, analysis_result: List[Dict], company_slug: str
         """Create formatted briefing content with all required fields."""
         
         if not analysis_result:
-            return f"📊 **{company_name} Intelligence Briefing**\n\n"
+            return (f"📊 **{company_name} Intelligence Briefing**\n\n"
                    f"No significant events or findings were detected in the recent data. "
-                   f"This could indicate a period of relative stability or limited recent activity."
+                   f"This could indicate a period of relative stability or limited recent activity.")
         
         # Group events by type
         events_by_type = {}
