@@ -21,13 +21,11 @@ class SingleCompanyWorkflow:
             # 1. Resolve Company and Load Profile
             await self.progress_handler.start_step("Resolving company name...", 1)
             resolver = self.app_context.agents['company_resolver']
-            canonical_name = resolver.resolve_company(company_name)
+            canonical_name, display_name = resolver.resolve_company(company_name)
             
             if not canonical_name:
                 await self.progress_handler.update_progress(f"Could not resolve company: '{company_name}'", is_error=True)
                 return {"error": f"Company '{company_name}' not found in our database."}
-            
-            display_name = resolver.get_display_name(canonical_name)
             profile = resolver.get_profile(canonical_name)
             if not profile:
                  return {"error": f"Profile for '{display_name}' could not be loaded."}

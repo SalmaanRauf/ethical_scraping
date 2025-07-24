@@ -34,7 +34,7 @@ class SECExtractorWrapper(BaseExtractorWrapper):
     async def extract_for_company(self, company_name: str, progress_handler: ProgressHandler) -> List[Dict[str, Any]]:
         await progress_handler.update_progress(f"Searching {self.source_name} for {company_name}...")
         # SEC extractor's get_recent_filings already handles company filtering internally
-        results = await self.extractor.get_recent_filings(company_name=company_name, days_back=90) # 90 days for SEC
+        results = await self.extractor.get_recent_filings(days_back=90) # 90 days for SEC
         await progress_handler.update_progress(f"Found {len(results)} SEC filings for {company_name}.")
         return results
 
@@ -46,7 +46,7 @@ class SAMExtractorWrapper(BaseExtractorWrapper):
     async def extract_for_company(self, company_name: str, progress_handler: ProgressHandler) -> List[Dict[str, Any]]:
         await progress_handler.update_progress(f"Searching {self.source_name} for {company_name}...")
         # SAM extractor's get_all_notices already handles company filtering internally
-        results = await self.extractor.get_all_notices(company_name=company_name, days_back=60) # 60 days for SAM
+        results = await self.extractor.get_all_notices(days_back=60) # 60 days for SAM
         await progress_handler.update_progress(f"Found {len(results)} procurement notices for {company_name}.")
         return results
 

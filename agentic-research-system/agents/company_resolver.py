@@ -12,9 +12,10 @@ class CompanyResolver:
     Resolves user input to canonical company slug with fuzzy matching.
     """
     
-    def __init__(self):
+    def __init__(self, profile_loader=None):
         self.company_slugs = COMPANY_SLUGS
         self.display_names = COMPANY_DISPLAY_NAMES
+        self.profile_loader = profile_loader
     
     def resolve_company(self, user_input: str) -> Tuple[Optional[str], Optional[str]]:
         """
@@ -97,6 +98,10 @@ class CompanyResolver:
         Returns:
             Company profile dictionary or None if not found
         """
-        from services.profile_loader import ProfileLoader
-        profile_loader = ProfileLoader()
-        return profile_loader.load_company_profile(canonical_slug)
+        if self.profile_loader:
+            return self.profile_loader.load_company_profile(canonical_slug)
+        else:
+            # Fallback to creating a new instance if none provided
+            from services.profile_loader import ProfileLoader
+            profile_loader = ProfileLoader()
+            return profile_loader.load_company_profile(canonical_slug)

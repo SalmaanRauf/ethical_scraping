@@ -4,7 +4,13 @@ Progress handling and real-time updates for Chainlit integration.
 
 import asyncio
 from typing import Callable, Optional
-from chainlit import Message
+
+# Try to import chainlit, but don't fail if it's not available
+try:
+    from chainlit import Message
+    CHAINLIT_AVAILABLE = True
+except ImportError:
+    CHAINLIT_AVAILABLE = False
 
 class ProgressHandler:
     """
@@ -57,3 +63,57 @@ class ProgressHandler:
     async def analysis_complete(self):
         """Analysis complete progress."""
         await self.update_progress("Generating briefing...")
+    
+    async def start_step(self, message: str, total_steps: int = 1):
+        """Start a new step in the workflow."""
+        self.current_step = 0
+        self.total_steps = total_steps
+        await self.update_progress(message)
+    
+    async def complete_step(self, message: str):
+        """Complete the current step."""
+        await self.update_progress(message)
+
+
+class ChainlitProgressHandler(ProgressHandler):
+    """
+    Progress handler specifically for Chainlit integration.
+    Sends progress updates to the Chainlit UI.
+    """
+    
+    def __init__(self):
+        super().__init__()
+    
+    async def update_progress(self, message: str):
+        """Send progress update to Chainlit UI."""
+        try:
+            import chainlit as cl
+            await cl.Message(content=f"🔄 {message}").send()
+        except ImportError:
+            # Fallback to console if chainlit not available
+            print(f"[PROGRESS] {message}")
+        except Exception as e:
+            # Fallback to console on any error
+            print(f"[PROGRESS] {message} (Chainlit error: {e})")
+
+
+class ChainlitProgressHandler(ProgressHandler):
+    """
+    Progress handler specifically for Chainlit integration.
+    Sends progress updates to the Chainlit UI.
+    """
+    
+    def __init__(self):
+        super().__init__()
+    
+    async def update_progress(self, message: str):
+        """Send progress update to Chainlit UI."""
+        try:
+            import chainlit as cl
+            await cl.Message(content=f"🔄 {message}").send()
+        except ImportError:
+            # Fallback to console if chainlit not available
+            print(f"[PROGRESS] {message}")
+        except Exception as e:
+            # Fallback to console on any error
+            print(f"[PROGRESS] {message} (Chainlit error: {e})")

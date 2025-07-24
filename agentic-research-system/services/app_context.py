@@ -49,8 +49,15 @@ class AppContext:
         # Core services
         self.profile_loader = ProfileLoader()
         self.scraper_agent = ScraperAgent()
-        await self.scraper_agent.initialize()
-        self.kernel = get_kernel()
+        # ScraperAgent doesn't need explicit initialization
+        
+        # Initialize kernel - handle async context properly
+        try:
+            self.kernel = get_kernel()
+        except RuntimeError:
+            # If we're in an async context, initialize kernel asynchronously
+            from config.kernel_setup import get_kernel_async
+            self.kernel, _ = await get_kernel_async()
 
         # Initialize agents
         self.agents: Dict[str, Any] = {
