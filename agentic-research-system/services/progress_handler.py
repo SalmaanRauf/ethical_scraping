@@ -95,25 +95,3 @@ class ChainlitProgressHandler(ProgressHandler):
         except Exception as e:
             # Fallback to console on any error
             print(f"[PROGRESS] {message} (Chainlit error: {e})")
-
-
-class ChainlitProgressHandler(ProgressHandler):
-    """
-    Progress handler specifically for Chainlit integration.
-    Sends progress updates to the Chainlit UI.
-    """
-    
-    def __init__(self):
-        super().__init__()
-    
-    async def update_progress(self, message: str):
-        """Send progress update to Chainlit UI."""
-        try:
-            import chainlit as cl
-            await cl.Message(content=f"🔄 {message}").send()
-        except ImportError:
-            # Fallback to console if chainlit not available
-            print(f"[PROGRESS] {message}")
-        except Exception as e:
-            # Fallback to console on any error
-            print(f"[PROGRESS] {message} (Chainlit error: {e})")

@@ -32,8 +32,7 @@ class SingleCompanyWorkflow:
             await self.progress_handler.complete_step("Company resolved.")
 
             # 2. Profile Loading
-            profile_loader = self.app_context.services['profile_loader']
-            profile = profile_loader.get_profile(canonical_name)
+            profile = resolver.get_profile(canonical_name)
             if not profile:
                 logger.error("❌ No profile found for company: %s", canonical_name)
                 return {"error": f"No profile found for {company_name}"}
@@ -44,14 +43,7 @@ class SingleCompanyWorkflow:
             extraction_tasks = []
             for extractor_name, extractor in self.app_context.extractors.items():
                 logger.info("🔍 Starting extraction with: %s", extractor_name)
-                if extractor_name == 'news_extractor':
-                    extraction_tasks.append(extractor.get_news_for_company(canonical_name))
-                elif extractor_name == 'sec_extractor':
-                    extraction_tasks.append(extractor.get_recent_filings())
-                elif extractor_name == 'sam_extractor':
-                    extraction_tasks.append(extractor.get_all_notices())
-                elif extractor_name == 'bing_grounding_agent':
-                    extraction_tasks.append(extractor.get_industry_briefing(canonical_name))
+                extraction_tasks.append(extractor.extract_for_company(canonical_name, self.progress_handler))
 
             results = await asyncio.gather(*extraction_tasks, return_exceptions=True)
             logger.info("📊 Extraction completed with %d results", len(results))
@@ -104,7 +96,7 @@ class SingleCompanyWorkflow:
         except Exception as e:
             logger.error("❌ Critical error in workflow for %s: %s", company_name, str(e))
             log_error(e, f"Critical error in workflow for {company_name}")
-            await self.progress_handler.update_progress(f"An unexpected error occurred: {e}", is_error=True)
+            await self.progress_handler.update_progress(f"An unexpected error occurred: {e}")
             return {"error": "An unexpected error occurred during the analysis."}
 
     def _generate_briefing(self, display_name: str, events: List[Dict[str, Any]], profile: Dict[str, Any], bing_industry_context: str) -> str:
