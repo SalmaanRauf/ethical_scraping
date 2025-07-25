@@ -46,26 +46,48 @@ class SECExtractor:
         """
         # Map company names to tickers
         company_to_ticker = {
+            # Standard names
             "Capital One": "COF",
             "Capital One Financial Corporation": "COF",
+            # Underscore versions (from company resolver)
+            "Capital_One": "COF",
+            "Capital_One_Financial_Corporation": "COF",
+            # Freddie Mac
             "Freddie Mac": "FMCC", 
             "Federal Home Loan Mortgage Corporation": "FMCC",
+            "Freddie_Mac": "FMCC",
+            "Federal_Home_Loan_Mortgage_Corporation": "FMCC",
+            # Fannie Mae
             "Fannie Mae": "FNMA",
             "Federal National Mortgage Association": "FNMA",
+            "Fannie_Mae": "FNMA",
+            "Federal_National_Mortgage_Association": "FNMA",
+            # Eagle Bank
             "Eagle Bank": "EGBN",
             "Eagle Bancorp Inc.": "EGBN",
+            "Eagle_Bank": "EGBN",
+            "Eagle_Bancorp_Inc.": "EGBN",
+            # Capital Bank
             "Capital Bank": "CBNK",
-            "Capital Bancorp Inc.": "CBNK"
+            "Capital Bancorp Inc.": "CBNK",
+            "Capital_Bank": "CBNK",
+            "Capital_Bancorp_Inc.": "CBNK"
         }
         
         # Try exact match first
         if company_name in company_to_ticker:
             return company_to_ticker[company_name]
         
-        # Try partial matches
+        # Try partial matches (case insensitive)
+        company_name_lower = company_name.lower()
         for company, ticker in company_to_ticker.items():
-            if company_name.lower() in company.lower() or company.lower() in company_name.lower():
+            if company_name_lower in company.lower() or company.lower() in company_name_lower:
                 return ticker
+        
+        # Try removing underscores and spaces
+        normalized_name = company_name.replace('_', ' ').replace('-', ' ')
+        if normalized_name in company_to_ticker:
+            return company_to_ticker[normalized_name]
         
         return None
 
