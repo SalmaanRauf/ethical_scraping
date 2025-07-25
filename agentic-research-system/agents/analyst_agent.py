@@ -356,6 +356,11 @@ class AnalystAgent:
                         item['triage_result'] = triage_result
                         relevant_items.append(item)
                         print(f"[ANALYST][TRIAGE] Relevant: '{item.get('title', '')[:60]}'")
+                    else:
+                        # Debug: Show why items are being filtered out
+                        category = triage_result.get('category', 'Unknown') if triage_result else 'No result'
+                        reasoning = triage_result.get('reasoning', 'No reasoning') if triage_result else 'No result'
+                        print(f"[ANALYST][TRIAGE] Filtered out: '{item.get('title', '')[:60]}' | Category: {category} | Reason: {reasoning}")
                 else:
                     chunks = self._create_intelligent_chunks(text)
                     prioritized_chunks = self._prioritize_chunks(chunks)[:3]
@@ -370,6 +375,11 @@ class AnalystAgent:
                             relevant_items.append(item)
                             print(f"[ANALYST][TRIAGE] Relevant chunk found for: {item.get('title', '')[:60]}")
                             break
+                        else:
+                            # Debug: Show why chunks are being filtered out
+                            category = triage_result.get('category', 'Unknown') if triage_result else 'No result'
+                            reasoning = triage_result.get('reasoning', 'No reasoning') if triage_result else 'No result'
+                            print(f"[ANALYST][TRIAGE] Chunk filtered out: '{item.get('title', '')[:60]}' | Category: {category} | Reason: {reasoning}")
             except Exception as e:
                 print(f"Error during triage for item: {e}")
                 continue
@@ -386,7 +396,8 @@ class AnalystAgent:
             self.chunk_size = 3000
         
         for item in items:
-            if item.get('triage_result', {}).get('category') in ['News Article', 'SEC Filing']:
+            # Process all items that passed triage, not just specific categories
+            if item.get('triage_result', {}).get('is_relevant', False):
                 try:
                     # Use content field if available, otherwise fall back to description
                     text = str(item.get('content', item.get('description', ''))).strip()

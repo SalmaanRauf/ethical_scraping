@@ -74,6 +74,9 @@ class SingleCompanyWorkflow:
             logger.info("✅ Consolidated %d items", len(consolidated_items))
             await self.progress_handler.complete_step("Data consolidation complete.")
 
+            # Store consolidated items for source extraction
+            self._consolidated_items = consolidated_items
+
             # 5. Analysis
             await self.progress_handler.start_step("Analyzing data...", 1)
             analyst = self.app_context.agents['analyst_agent']
@@ -101,34 +104,31 @@ class SingleCompanyWorkflow:
 
     def _generate_briefing(self, display_name: str, events: List[Dict[str, Any]], profile: Dict[str, Any], bing_industry_context: str) -> str:
         """
-        Generates a Markdown-formatted briefing from the analyzed events.
-        Follows the specified output format with all required fields.
+        Generate a comprehensive intelligence briefing with all required fields.
         """
-        if not events:
-            return f"## No relevant recent information found for {display_name}.\n\nProfile\nDescription: {profile.get('description', 'N/A')}\nWebsite: {profile.get('website', 'N/A')}\nRecent Stock Price: ${profile.get('recent_stock_price', 'N/A')}"
-
-        # Sort events by relevance score before displaying
-        sorted_events = sorted(events, key=lambda x: x.get('relevance_score', 0), reverse=True)
-
-        briefing_parts = [f"# Intelligence Briefing: {display_name}\n"]
+        briefing_parts = [f"# Intelligence Briefing: {display_name}"]
         
         # --- Company Profile Section ---
-        briefing_parts.append("## Company Profile")
+        briefing_parts.append("\n## Company Profile")
         briefing_parts.append(f"**Description:** {profile.get('description', 'N/A')}")
         briefing_parts.append(f"**Website:** {profile.get('website', 'N/A')}")
-        briefing_parts.append(f"**Recent Stock Price:** ${profile.get('recent_stock_price', 'N/A')}")
+        briefing_parts.append(f"**Recent Stock Price:** {profile.get('stock_price', 'N/A')}")
         
-        # --- Company Profile Snippets ---
+        # Company Profile Snippets
+        profile_snippets = {}
         if profile.get('people', {}).get('keyBuyers'):
             key_buyers = [buyer.get('name', 'N/A') for buyer in profile['people']['keyBuyers']]
+            profile_snippets['key_buyers'] = key_buyers
             briefing_parts.append(f"**Key Buyers:** {', '.join(key_buyers)}")
         
         if profile.get('people', {}).get('alumni'):
             alumni = [alum.get('name', 'N/A') for alum in profile['people']['alumni']]
+            profile_snippets['alumni_contacts'] = alumni
             briefing_parts.append(f"**Alumni Contacts:** {', '.join(alumni)}")
         
         if profile.get('opportunities', {}).get('open'):
             active_opps = [opp.get('name', 'N/A') for opp in profile['opportunities']['open']]
+            profile_snippets['active_opportunities'] = active_opps
             briefing_parts.append(f"**Active Opportunities:** {', '.join(active_opps)}")
 
         # --- Industry Overview Section ---
@@ -144,7 +144,7 @@ class SingleCompanyWorkflow:
         if not events:
             briefing_parts.append("*No relevant recent information found for this company.*")
         else:
-            for i, event in enumerate(sorted_events[:5], 1):  # Show top 5 events
+            for i, event in enumerate(sorted(events, key=lambda x: x.get('relevance_score', 0), reverse=True)[:5], 1):  # Show top 5 events
                 event_section = self._format_event(event, i)
                 briefing_parts.append(event_section)
 
@@ -158,11 +158,28 @@ class SingleCompanyWorkflow:
         # --- Sources Section ---
         briefing_parts.append("\n## Sources")
         sources = set()
-        for event in sorted_events:
+        
+        # Extract sources from analyzed events
+        for event in events:
             if event.get('url'):
                 sources.add(event['url'])
             elif event.get('source_url'):
                 sources.add(event['source_url'])
+            elif event.get('link'):
+                sources.add(event['link'])
+        
+        # Also extract sources from consolidated data (in case events don't have sources)
+        # This ensures we capture all available sources even if they weren't analyzed
+        if hasattr(self, '_consolidated_items'):
+            for item in self._consolidated_items:
+                if item.get('link') and item.get('link') != 'N/A':
+                    sources.add(item['link'])
+                # Handle Bing citations
+                if item.get('citations'):
+                    # Extract URLs from citations (format: [Title](URL))
+                    import re
+                    citation_urls = re.findall(r'\]\((https?://[^)]+)\)', item['citations'])
+                    sources.update(citation_urls)
         
         if sources:
             for source in list(sources)[:10]:  # Limit to top 10 sources
@@ -218,7 +235,9 @@ class SingleCompanyWorkflow:
         if event.get('value_usd'):
             parts.append(f"**Value:** ${event['value_usd']:,}")
         
-        if event.get('source_url'):
-            parts.append(f"**Source:** {event['source_url']}")
+        # Source URL - prioritize different field names
+        source_url = event.get('source_url') or event.get('url') or event.get('link')
+        if source_url:
+            parts.append(f"**Source:** {source_url}")
         
         return "\n".join(parts)

@@ -23,21 +23,22 @@ class SECExtractor:
         self.query_api = QueryApi(api_key=self.api_key) if self.api_key else None
         self.scraper_agent = scraper_agent
         self.profile_loader = profile_loader
-        # Use lazy loading instead of loading profiles in constructor
-        self._company_profiles = None
+        
+        # Use ticker symbols like the original version
+        self.target_tickers = {
+            "COF": "Capital One Financial Corporation",
+            "FMCC": "Federal Home Loan Mortgage Corporation",    # Freddie Mac
+            "FNMA": "Federal National Mortgage Association",     # Fannie Mae
+            "EGBN": "Eagle Bancorp Inc.",
+            "CBNK": "Capital Bancorp Inc."
+        }
+        # NOTE: PenFed and Navy Federal Credit Union do not have public tickers; cannot be queried.
 
         # API quota management
         self.api_calls_made = 0
         self.max_api_calls = 2 # Strict cap per run as per old implementation
         
         logger.info("🔍 SECExtractor initialized")
-
-    @property
-    def company_profiles(self):
-        """Lazy load company profiles when first accessed."""
-        if self._company_profiles is None:
-            self._company_profiles = self.profile_loader.load_profiles()
-        return self._company_profiles
 
     async def get_recent_filings(self, days_back: int = None) -> List[Dict[str, Any]]:
         """
@@ -60,102 +61,102 @@ class SECExtractor:
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days_back)
 
-        all_filings = []
-        for company_name, profile in self.company_profiles.items():
-            cik = profile.get("sec_cik")
-            if not cik:
-                logger.warning("⚠️  No CIK found for company: %s", company_name)
-                continue
-
-            logger.info("🔍 Fetching SEC filings for %s (CIK: %s)", company_name, cik)
-
-            query = {
-                "query": {
-                    "query_string": {
-                        "query": (
-                            f"cik:\"{cik}\" AND formType:(\"10-Q\" OR \"10-K\") "
-                            f"AND filedAt:[{start_date.strftime('%Y-%m-%d')} TO {end_date.strftime('%Y-%m-%d')}]"
-                        )
-                    }
-                },
-                "from": "0",
-                "size": "10", # Fetch a reasonable number per company
-                "sort": [{"filedAt": {"order": "desc"}}]
-            }
-
-            try:
-                filings = self.query_api.get_filings(query).get('filings', [])
-                self.api_calls_made += 1
-
-                logger.info("📄 SEC API returned %d filings for %s", len(filings), company_name)
-
-                # Limit to max_per_company filings per company (from old implementation)
-                max_per_company = 3
-                company_filings_count = 0
-                for filing in filings:
-                    if company_filings_count < max_per_company:
-                        all_filings.append(filing)
-                        company_filings_count += 1
-
-                logger.info("✅ Added %d filings for %s", company_filings_count, company_name)
-
-                if self.api_calls_made >= self.max_api_calls:
-                    logger.warning("⚠️  SEC API quota limit reached (%d/%d). Stopping early.", self.api_calls_made, self.max_api_calls)
-                    break # Stop processing further companies if quota hit
-
-            except Exception as e:
-                log_error(e, f"Error fetching SEC filings for {company_name} (CIK: {cik})")
-
-        logger.info("📊 Total SEC filings found: %d", len(all_filings))
-
-        # Enhance all found filings with full content
-        enhancement_tasks = [self._gracefully_enhance_filing(filing) for filing in all_filings]
-        enhanced_filings = await asyncio.gather(*enhancement_tasks)
-        
-        final_filings = [filing for filing in enhanced_filings if filing]
-        logger.info("✅ SEC extraction complete: %d enhanced filings", len(final_filings))
-        
-        return final_filings
-
-    async def _gracefully_enhance_filing(self, filing: Dict) -> Dict:
-        """
-        Attempts to scrape the full text of a filing from its SEC URL.
-        If scraping fails, it falls back to the original extracted text or summary.
-        """
-        filing_url = filing.get('linkToFilingDetails')
-        if not filing_url:
-            logger.warning("⚠️  No filing URL found for: %s", filing.get('title', 'Unknown'))
-            return filing
+        # Use ticker-based query like the original version
+        ticker_list = " OR ".join([f'ticker:\"{ticker}\"' for ticker in self.target_tickers.keys()])
+        query = {
+            "query": {
+                "query_string": {
+                    "query": (
+                        f"({ticker_list}) AND formType:(10-Q OR 10-K) "
+                        f"AND filedAt: [{start_date.strftime('%Y-%m-%d')} TO {end_date.strftime('%Y-%m-%d')}]"
+                    )
+                }
+            },
+            "from": "0",
+            "size": "50",
+            "sort": [{"filedAt": {"order": "desc"}}]
+        }
 
         try:
-            logger.debug("🔍 Scraping SEC filing: %s", filing_url)
-            html_content = await self.scraper_agent.fetch_content(filing_url, wait_selector="body")
-            
-            if html_content:
-                # Use BeautifulSoup to extract clean text
-                soup = BeautifulSoup(html_content, 'html.parser')
-                
-                # Remove script and style elements
-                for script in soup(["script", "style"]):
-                    script.decompose()
-                
-                # Get text and clean it up
-                full_text = soup.get_text()
-                lines = (line.strip() for line in full_text.splitlines())
-                chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-                full_text = ' '.join(chunk for chunk in chunks if chunk)
-                
-                if len(full_text) > 500:  # Only use scraped content if substantial
-                    filing['content'] = full_text
-                    logger.info("✅ Successfully scraped SEC filing: %s (%d chars)", 
-                               filing.get('title', 'Unknown'), len(full_text))
-                else:
-                    logger.warning("⚠️  Scraped content too short for SEC filing: %s (%d chars)", 
-                                  filing.get('title', 'Unknown'), len(full_text))
+            filings = self.query_api.get_filings(query).get('filings', [])
+            self.api_calls_made += 1
+
+            logger.info("📄 SEC API returned %d filings", len(filings))
+
+            # Limit to max_per_company filings per company (from old implementation)
+            max_per_company = 3
+            company_counts = {}
+            limited_filings = []
+            for filing in filings:
+                company = filing.get('companyName', '') or ''
+                if company not in company_counts:
+                    company_counts[company] = 0
+                if company_counts[company] < max_per_company:
+                    limited_filings.append(filing)
+                    company_counts[company] += 1
+
+            logger.info("✅ Limited to %d filings (%d companies)", len(limited_filings), len(company_counts))
+
+            # Enhance all found filings with full content
+            if self.scraper_agent and hasattr(self.scraper_agent, 'is_available') and self.scraper_agent.is_available():
+                logger.info("🕷️  Enhancing filings with extracted full context via ScraperAgent...")
+                enhanced = []
+                success = 0
+                fail = 0
+                for idx, filing in enumerate(limited_filings):
+                    url = filing.get('linkToFilingDetails') or filing.get('link') or filing.get('url')
+                    title = filing.get('companyName', 'No Title')[:70]
+                    if url:
+                        try:
+                            logger.info(f"➡️ [{idx+1}/{len(limited_filings)}] Scraping SEC filing: {title}\n    URL: {url}")
+                            full_content = await self.scraper_agent.scrape_url(url, "sec_filing")
+                            if full_content:
+                                filing['full_content'] = full_content
+                                filing['content_enhanced'] = True
+                                logger.info(f"✅ SEC filing scraped successfully ({len(full_content)} chars): {title}")
+                                success += 1
+                            else:
+                                filing['full_content'] = None
+                                filing['content_enhanced'] = False
+                                logger.warning(f"⚠️  Failed to extract content for SEC filing: {title}")
+                                fail += 1
+                        except Exception as e:
+                            filing['full_content'] = None
+                            filing['content_enhanced'] = False
+                            logger.error(f"❌ Exception scraping SEC filing '{title}': {e}")
+                            fail += 1
+                    else:
+                        filing['full_content'] = None
+                        filing['content_enhanced'] = False
+                        logger.warning(f"⚠️  SEC filing missing URL: '{title}'")
+                        fail += 1
+                    enhanced.append(filing)
+                logger.info(f"📊 Filing enhancement summary: {success} ok, {fail} failed, {len(limited_filings)} total")
+                return enhanced
             else:
-                logger.warning("⚠️  Failed to scrape content for SEC filing: %s", filing.get('title', 'Unknown'))
-                
+                logger.warning("⚠️  ScraperAgent not available for SEC filings; sending plain results.")
+                return limited_filings
+
         except Exception as e:
-            logger.error("❌ Error scraping SEC filing %s: %s", filing_url, str(e))
+            log_error(e, "Error fetching SEC filings")
+            return []
+
+    async def extract_for_company(self, company_name: str, progress_handler=None) -> List[Dict[str, Any]]:
+        """
+        Extract SEC filings for a specific company.
+        This method is called by the single company workflow.
+        """
+        logger.info("🔍 Extracting SEC filings for company: %s", company_name)
         
-        return filing
+        # Get recent filings (default to 90 days back)
+        filings = await self.get_recent_filings(days_back=90)
+        
+        # Filter filings for the specific company
+        company_filings = []
+        for filing in filings:
+            filing_company = filing.get('companyName', '')
+            if company_name.lower() in filing_company.lower() or filing_company.lower() in company_name.lower():
+                company_filings.append(filing)
+        
+        logger.info("✅ Found %d SEC filings for %s", len(company_filings), company_name)
+        return company_filings

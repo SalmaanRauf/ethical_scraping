@@ -60,6 +60,8 @@ async def initialize_kernel():
    kernel.add_service(chat)
    exec_settings = AzureChatPromptExecutionSettings(service_id="atlas")
    exec_settings.function_choice_behavior = FunctionChoiceBehavior.Auto()
+   # Configure response format to prevent XML parsing errors
+   exec_settings.response_format = {"type": "json_object"}
    print("Semantic Kernel initialized successfully with ATLAS/Azure OpenAI")
    return kernel, exec_settings
 # For synchronous compatibility
