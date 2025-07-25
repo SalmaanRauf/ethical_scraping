@@ -1,6 +1,6 @@
 import asyncio
-from typing import Dict, Any, List
 import logging
+from typing import Dict, List, Any
 from services.app_context import AppContext
 from services.progress_handler import ProgressHandler
 from services.error_handler import log_error
@@ -111,15 +111,19 @@ class SingleCompanyWorkflow:
         # --- Company Profile Section ---
         briefing_parts.append("\n## Company Profile")
         briefing_parts.append(f"**Description:** {profile.get('description', 'N/A')}")
-        briefing_parts.append(f"**Website:** {profile.get('website', 'N/A')}")
-        briefing_parts.append(f"**Recent Stock Price:** {profile.get('stock_price', 'N/A')}")
         
         # Company Profile Snippets
         profile_snippets = {}
         if profile.get('people', {}).get('keyBuyers'):
-            key_buyers = [buyer.get('name', 'N/A') for buyer in profile['people']['keyBuyers']]
-            profile_snippets['key_buyers'] = key_buyers
-            briefing_parts.append(f"**Key Buyers:** {', '.join(key_buyers)}")
+            # Sort key buyers by numberOfWins and take top 2
+            key_buyers = sorted(
+                profile['people']['keyBuyers'], 
+                key=lambda x: x.get('numberOfWins', 0), 
+                reverse=True
+            )[:2]
+            key_buyer_names = [buyer.get('name', 'N/A') for buyer in key_buyers]
+            profile_snippets['key_buyers'] = key_buyer_names
+            briefing_parts.append(f"**Key Buyers:** {', '.join(key_buyer_names)}")
         
         if profile.get('people', {}).get('alumni'):
             alumni = [alum.get('name', 'N/A') for alum in profile['people']['alumni']]
@@ -144,7 +148,9 @@ class SingleCompanyWorkflow:
         if not events:
             briefing_parts.append("*No relevant recent information found for this company.*")
         else:
-            for i, event in enumerate(sorted(events, key=lambda x: x.get('relevance_score', 0), reverse=True)[:5], 1):  # Show top 5 events
+            # Deduplicate events to prevent repeated news
+            deduplicated_events = self._deduplicate_events(events)
+            for i, event in enumerate(sorted(deduplicated_events, key=lambda x: x.get('relevance_score', 0), reverse=True)[:5], 1):  # Show top 5 events
                 event_section = self._format_event(event, i)
                 briefing_parts.append(event_section)
 
@@ -241,3 +247,79 @@ class SingleCompanyWorkflow:
             parts.append(f"**Source:** {source_url}")
         
         return "\n".join(parts)
+
+    def _deduplicate_events(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Deduplicate events to prevent repeated news events.
+        Compares event titles and content to identify duplicates.
+        """
+        if not events:
+            return events
+        
+        # Extract key information for comparison
+        def get_event_key(event):
+            insights = event.get('insights', {})
+            what_happened = insights.get('what_happened', event.get('title', ''))
+            # Normalize the text for comparison
+            return what_happened.lower().strip()
+        
+        seen_events = set()
+        deduplicated = []
+        
+        for event in events:
+            event_key = get_event_key(event)
+            
+            # Check if this event is similar to any we've seen
+            is_duplicate = False
+            for seen_key in seen_events:
+                # Use simple similarity check - if key phrases match, consider it duplicate
+                if self._is_similar_event(event_key, seen_key):
+                    is_duplicate = True
+                    break
+            
+            if not is_duplicate:
+                deduplicated.append(event)
+                seen_events.add(event_key)
+        
+        logger.info(f"✅ Deduplicated events: {len(events)} → {len(deduplicated)}")
+        return deduplicated
+    
+    def _is_similar_event(self, event1: str, event2: str) -> bool:
+        """
+        Check if two events are similar enough to be considered duplicates.
+        """
+        # Extract key phrases that indicate the same event
+        key_phrases = [
+            "acquisition of discover",
+            "discover financial services",
+            "billion acquisition",
+            "merger with discover",
+            "discover deal",
+            "capital one discover",
+            "discover acquisition"
+        ]
+        
+        event1_lower = event1.lower()
+        event2_lower = event2.lower()
+        
+        # Check if both events contain the same key phrase
+        for phrase in key_phrases:
+            if phrase in event1_lower and phrase in event2_lower:
+                return True
+        
+        # Additional check for monetary values that are very close
+        import re
+        amounts1 = re.findall(r'\$(\d+(?:\.\d+)?)\s*(?:billion|million)', event1_lower)
+        amounts2 = re.findall(r'\$(\d+(?:\.\d+)?)\s*(?:billion|million)', event2_lower)
+        
+        if amounts1 and amounts2:
+            # If both have monetary amounts and they're close, likely same event
+            try:
+                val1 = float(amounts1[0])
+                val2 = float(amounts2[0])
+                if abs(val1 - val2) < 5:  # Within $5B difference
+                    return True
+            except ValueError:
+                pass
+        
+        return False

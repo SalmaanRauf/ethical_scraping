@@ -33,8 +33,8 @@ class SECExtractorWrapper(BaseExtractorWrapper):
 
     async def extract_for_company(self, company_name: str, progress_handler: ProgressHandler) -> List[Dict[str, Any]]:
         await progress_handler.update_progress(f"Searching {self.source_name} for {company_name}...")
-        # SEC extractor's get_recent_filings already handles company filtering internally
-        results = await self.extractor.get_recent_filings(days_back=90) # 90 days for SEC
+        # SEC extractor's get_recent_filings now accepts company_name parameter
+        results = await self.extractor.get_recent_filings(days_back=90, company_name=company_name) # 90 days for SEC
         await progress_handler.update_progress(f"Found {len(results)} SEC filings for {company_name}.")
         return results
 

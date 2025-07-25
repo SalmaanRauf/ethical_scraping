@@ -40,7 +40,36 @@ class SECExtractor:
         
         logger.info("🔍 SECExtractor initialized")
 
-    async def get_recent_filings(self, days_back: int = None) -> List[Dict[str, Any]]:
+    def _get_ticker_for_company(self, company_name: str) -> str:
+        """
+        Get the ticker symbol for a specific company.
+        """
+        # Map company names to tickers
+        company_to_ticker = {
+            "Capital One": "COF",
+            "Capital One Financial Corporation": "COF",
+            "Freddie Mac": "FMCC", 
+            "Federal Home Loan Mortgage Corporation": "FMCC",
+            "Fannie Mae": "FNMA",
+            "Federal National Mortgage Association": "FNMA",
+            "Eagle Bank": "EGBN",
+            "Eagle Bancorp Inc.": "EGBN",
+            "Capital Bank": "CBNK",
+            "Capital Bancorp Inc.": "CBNK"
+        }
+        
+        # Try exact match first
+        if company_name in company_to_ticker:
+            return company_to_ticker[company_name]
+        
+        # Try partial matches
+        for company, ticker in company_to_ticker.items():
+            if company_name.lower() in company.lower() or company.lower() in company_name.lower():
+                return ticker
+        
+        return None
+
+    async def get_recent_filings(self, days_back: int = None, company_name: str = None) -> List[Dict[str, Any]]:
         """
         Fetches recent filings for all configured companies within a specified date range.
         Enhances filings with full scraped content if a scraper agent is available.
@@ -62,12 +91,26 @@ class SECExtractor:
         start_date = end_date - timedelta(days=days_back)
 
         # Use ticker-based query like the original version
-        ticker_list = " OR ".join([f'ticker:\"{ticker}\"' for ticker in self.target_tickers.keys()])
+        if company_name:
+            # Query for specific company only
+            ticker = self._get_ticker_for_company(company_name)
+            if not ticker:
+                logger.warning("⚠️  No ticker found for company: %s", company_name)
+                return []
+            
+            logger.info("🔍 Querying SEC filings for %s (ticker: %s)", company_name, ticker)
+            ticker_query = f'ticker:"{ticker}"'
+        else:
+            # Query for all companies (fallback for batch mode)
+            ticker_list = " OR ".join([f'ticker:\"{ticker}\"' for ticker in self.target_tickers.keys()])
+            ticker_query = f"({ticker_list})"
+            logger.info("🔍 Querying SEC filings for all companies")
+        
         query = {
             "query": {
                 "query_string": {
                     "query": (
-                        f"({ticker_list}) AND formType:(10-Q OR 10-K) "
+                        f"{ticker_query} AND formType:(10-Q OR 10-K) "
                         f"AND filedAt: [{start_date.strftime('%Y-%m-%d')} TO {end_date.strftime('%Y-%m-%d')}]"
                     )
                 }
@@ -148,15 +191,8 @@ class SECExtractor:
         """
         logger.info("🔍 Extracting SEC filings for company: %s", company_name)
         
-        # Get recent filings (default to 90 days back)
-        filings = await self.get_recent_filings(days_back=90)
+        # Get recent filings for the specific company only
+        filings = await self.get_recent_filings(days_back=90, company_name=company_name)
         
-        # Filter filings for the specific company
-        company_filings = []
-        for filing in filings:
-            filing_company = filing.get('companyName', '')
-            if company_name.lower() in filing_company.lower() or filing_company.lower() in company_name.lower():
-                company_filings.append(filing)
-        
-        logger.info("✅ Found %d SEC filings for %s", len(company_filings), company_name)
-        return company_filings
+        logger.info("✅ Found %d SEC filings for %s", len(filings), company_name)
+        return filings
