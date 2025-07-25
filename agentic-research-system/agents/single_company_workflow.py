@@ -121,14 +121,40 @@ class SingleCompanyWorkflow:
                 key=lambda x: x.get('numberOfWins', 0), 
                 reverse=True
             )[:2]
-            key_buyer_names = [buyer.get('name', 'N/A') for buyer in key_buyers]
-            profile_snippets['key_buyers'] = key_buyer_names
-            briefing_parts.append(f"**Key Buyers:** {', '.join(key_buyer_names)}")
+            
+            # Format key buyers with detailed contact info
+            key_buyer_details = []
+            for buyer in key_buyers:
+                buyer_info = f"**Name:** {buyer.get('name', 'N/A')}\n"
+                buyer_info += f"**Title:** {buyer.get('title', 'N/A')}\n"
+                buyer_info += f"**Email:** {buyer.get('emailAddress', 'N/A')}\n"
+                buyer_info += f"**LinkedIn:** {buyer.get('linkedinUrl', 'N/A')}"
+                key_buyer_details.append(buyer_info)
+            
+            profile_snippets['key_buyers'] = key_buyer_details
+            briefing_parts.append("**Key Buyers:**")
+            for buyer_detail in key_buyer_details:
+                briefing_parts.append(buyer_detail)
+                briefing_parts.append("")  # Add spacing between buyers
         
         if profile.get('people', {}).get('alumni'):
-            alumni = [alum.get('name', 'N/A') for alum in profile['people']['alumni']]
-            profile_snippets['alumni_contacts'] = alumni
-            briefing_parts.append(f"**Alumni Contacts:** {', '.join(alumni)}")
+            # Take top 3 alumni (could be sorted by some criteria if available)
+            alumni = profile['people']['alumni'][:3]
+            
+            # Format alumni with detailed contact info
+            alumni_details = []
+            for alum in alumni:
+                alum_info = f"**Name:** {alum.get('name', 'N/A')}\n"
+                alum_info += f"**Title:** {alum.get('title', 'N/A')}\n"
+                alum_info += f"**LinkedIn:** {alum.get('linkedinUrl', 'N/A')}\n"
+                alum_info += f"**Email:** {alum.get('emailAddress', 'N/A')}"
+                alumni_details.append(alum_info)
+            
+            profile_snippets['alumni_contacts'] = alumni_details
+            briefing_parts.append("**Alumni Contacts:**")
+            for alum_detail in alumni_details:
+                briefing_parts.append(alum_detail)
+                briefing_parts.append("")  # Add spacing between alumni
         
         if profile.get('opportunities', {}).get('open'):
             active_opps = [opp.get('name', 'N/A') for opp in profile['opportunities']['open']]
