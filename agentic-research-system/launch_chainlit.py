@@ -81,25 +81,22 @@ def main():
         # Change to chainlit_app directory
         os.chdir("chainlit_app")
         
-        # Import and run chainlit
-        import chainlit as cl
-        from chainlit_app.main import start, handle_message, end
+        # Launch the app using chainlit run
+        import subprocess
         
-        # Set up the Chainlit app
-        cl.setup(
-            title="Company Intelligence Briefing System",
-            description="Get comprehensive intelligence briefings on financial institutions",
-            on_chat_start=start,
-            on_message=handle_message,
-            on_chat_end=end
-        )
+        # Set environment variables for proper imports
+        env = os.environ.copy()
+        env['PYTHONPATH'] = f"{os.path.abspath('..')}:{env.get('PYTHONPATH', '')}"
         
-        # Launch the app
-        cl.run(
-            host="0.0.0.0",
-            port=8000,
-            show_progress=True
-        )
+        # Run chainlit directly
+        result = subprocess.run([
+            sys.executable, "-m", "chainlit", "run", "main.py", 
+            "--host", "0.0.0.0", "--port", "8000"
+        ], cwd=".", env=env)
+        
+        if result.returncode != 0:
+            print(f"❌ Chainlit exited with code {result.returncode}")
+            sys.exit(1)
         
     except KeyboardInterrupt:
         print("\n🛑 Application stopped by user")

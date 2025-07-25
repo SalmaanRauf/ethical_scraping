@@ -1,4 +1,12 @@
 import chainlit as cl
+import sys
+import os
+from pathlib import Path
+
+# Add the parent directory to Python path for imports
+parent_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(parent_dir))
+
 from services.app_context import app_context
 from services.progress_handler import ChainlitProgressHandler
 from agents.single_company_workflow import SingleCompanyWorkflow

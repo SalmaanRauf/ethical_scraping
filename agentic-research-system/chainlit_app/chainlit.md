@@ -1,8 +1,25 @@
-# 🤖 Company Intelligence Briefing System
+# Company Intelligence Briefing System
 
-Welcome to the Company Intelligence Briefing System! I can provide comprehensive briefings on any of our tracked companies.
+Welcome to the Company Intelligence Briefing System! 
 
-## Available Companies
+This application provides comprehensive intelligence briefings on financial institutions. Simply enter a company name to get started.
+
+## Features
+
+- **Real-time Analysis**: Get up-to-date intelligence on financial institutions
+- **Comprehensive Coverage**: Analyzes news, SEC filings, and procurement data
+- **Interactive Interface**: Easy-to-use chat interface
+- **Detailed Reports**: Generate comprehensive briefings with insights
+
+## How to Use
+
+1. Enter a company name (e.g., "Capital One", "Fannie Mae")
+2. Wait for the system to gather and analyze data
+3. Review the comprehensive briefing report
+4. Ask follow-up questions if needed
+
+## Supported Companies
+
 - Capital One Financial Corporation
 - Federal National Mortgage Association (Fannie Mae)
 - Federal Home Loan Mortgage Corporation (Freddie Mac)
@@ -11,10 +28,13 @@ Welcome to the Company Intelligence Briefing System! I can provide comprehensive
 - EagleBank
 - Capital Bank N.A.
 
-## How to Use
-Simply ask for a briefing on any company, for example:
-- "Give me a briefing on Capital One"
-- "I need intelligence on Fannie Mae"
-- "What's happening with Navy Federal?"
+## Data Sources
 
-The system will gather real-time intelligence from multiple sources and provide you with a comprehensive briefing. 
+- **News Articles**: Recent news and press releases
+- **SEC Filings**: Recent financial filings and disclosures
+- **Procurement Data**: Government contract opportunities
+- **Industry Context**: Market analysis and trends
+
+---
+
+*Powered by advanced AI analysis and comprehensive data gathering* 
