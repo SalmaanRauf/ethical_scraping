@@ -118,17 +118,18 @@ class SingleCompanyWorkflow:
         briefing_parts.append(f"**Website:** {profile.get('website', 'N/A')}")
         briefing_parts.append(f"**Recent Stock Price:** ${profile.get('recent_stock_price', 'N/A')}")
         
-        # --- Active Opportunities ---
-        if profile.get('active_opportunities'):
-            briefing_parts.append(f"**Active Opportunities:** {', '.join(profile.get('active_opportunities', []))}")
+        # --- Company Profile Snippets ---
+        if profile.get('people', {}).get('keyBuyers'):
+            key_buyers = [buyer.get('name', 'N/A') for buyer in profile['people']['keyBuyers']]
+            briefing_parts.append(f"**Key Buyers:** {', '.join(key_buyers)}")
         
-        # --- Key Buyers ---
-        if profile.get('key_buyers'):
-            briefing_parts.append(f"**Key Buyers:** {', '.join(profile.get('key_buyers', []))}")
+        if profile.get('people', {}).get('alumni'):
+            alumni = [alum.get('name', 'N/A') for alum in profile['people']['alumni']]
+            briefing_parts.append(f"**Alumni Contacts:** {', '.join(alumni)}")
         
-        # --- Alumni Contacts ---
-        if profile.get('alumni_contacts'):
-            briefing_parts.append(f"**Alumni Contacts:** {', '.join(profile.get('alumni_contacts', []))}")
+        if profile.get('opportunities', {}).get('open'):
+            active_opps = [opp.get('name', 'N/A') for opp in profile['opportunities']['open']]
+            briefing_parts.append(f"**Active Opportunities:** {', '.join(active_opps)}")
 
         # --- Industry Overview Section ---
         briefing_parts.append("\n## Industry Overview")
@@ -140,23 +141,34 @@ class SingleCompanyWorkflow:
         # --- Key Events Section ---
         briefing_parts.append("\n## Key Events & Findings")
         
-        for i, event in enumerate(sorted_events[:5], 1):  # Show top 5 events
-            event_section = self._format_event(event, i)
-            briefing_parts.append(event_section)
+        if not events:
+            briefing_parts.append("*No relevant recent information found for this company.*")
+        else:
+            for i, event in enumerate(sorted_events[:5], 1):  # Show top 5 events
+                event_section = self._format_event(event, i)
+                briefing_parts.append(event_section)
 
         # --- Consulting Opportunities Section ---
         briefing_parts.append("\n## Consulting Opportunities")
-        briefing_parts.append("*Analysis of how our firm can help based on identified events*")
+        if events:
+            briefing_parts.append("*Analysis of how our firm can help based on identified events*")
+        else:
+            briefing_parts.append("*No specific consulting opportunities identified at this time.*")
 
         # --- Sources Section ---
         briefing_parts.append("\n## Sources")
         sources = set()
         for event in sorted_events:
-            if event.get('source_url'):
+            if event.get('url'):
+                sources.add(event['url'])
+            elif event.get('source_url'):
                 sources.add(event['source_url'])
         
-        for source in list(sources)[:10]:  # Limit to top 10 sources
-            briefing_parts.append(f"- {source}")
+        if sources:
+            for source in list(sources)[:10]:  # Limit to top 10 sources
+                briefing_parts.append(f"- {source}")
+        else:
+            briefing_parts.append("*No specific sources available.*")
 
         return "\n".join(briefing_parts)
 
@@ -187,14 +199,17 @@ class SingleCompanyWorkflow:
         """
         parts = [f"\n### Event {index}"]
         
+        # Extract insights from the event
+        insights = event.get('insights', {})
+        
         # Required fields from vision
-        parts.append(f"**Company:** {event.get('company_name', 'N/A')}")
-        parts.append(f"**What Happened:** {event.get('what_happened', event.get('headline', 'N/A'))}")
-        parts.append(f"**Why It Matters:** {event.get('why_it_matters', 'N/A')}")
-        parts.append(f"**Consulting Angle:** {event.get('consulting_angle', 'N/A')}")
-        parts.append(f"**Need Type:** {event.get('need_type', 'N/A')}")
-        parts.append(f"**Service Line:** {event.get('service_line', 'N/A')}")
-        parts.append(f"**Urgency:** {event.get('urgency', 'Medium')}")
+        parts.append(f"**Company:** {event.get('company', 'N/A')}")
+        parts.append(f"**What Happened:** {insights.get('what_happened', event.get('title', 'N/A'))}")
+        parts.append(f"**Why It Matters:** {insights.get('why_it_matters', 'N/A')}")
+        parts.append(f"**Consulting Angle:** {insights.get('consulting_angle', 'N/A')}")
+        parts.append(f"**Need Type:** {insights.get('need_type', 'N/A')}")
+        parts.append(f"**Service Line:** {insights.get('service_line', 'N/A')}")
+        parts.append(f"**Urgency:** {insights.get('urgency', 'Medium')}")
         
         # Additional context
         if event.get('event_type'):

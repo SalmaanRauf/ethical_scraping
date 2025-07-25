@@ -297,7 +297,7 @@ class AnalystAgent:
             raw_data = item.get('raw_data', {})
             adapted_item = {
                 'title': item.get('title', raw_data.get('title', '')),
-                'description': item.get('description', raw_data.get('description', '')),
+                'description': item.get('content', item.get('description', raw_data.get('description', ''))),  # Use content field from consolidated data
                 'company': item.get('company', raw_data.get('company', '')),
                 'source': item.get('source_name', raw_data.get('source', '')),
                 'url': item.get('url', raw_data.get('link', '')),
@@ -333,7 +333,8 @@ class AnalystAgent:
         relevant_items = []
         for item in data_items:
             try:
-                text = str(item.get('description', '')).strip()
+                # Use content field if available, otherwise fall back to description
+                text = str(item.get('content', item.get('description', ''))).strip()
                 scraped_label = "(SCRAPED)" if item.get('raw_data', {}).get('content_enhanced') else "(SUMMARY_ONLY)"
                 print(f"[ANALYST][TRIAGE] Input: '{item.get('title', 'NO TITLE')[:60]}' | Length: {len(text)} | {scraped_label}")
                 if not text:
@@ -375,7 +376,8 @@ class AnalystAgent:
         for item in items:
             if item.get('triage_result', {}).get('category') in ['News Article', 'SEC Filing']:
                 try:
-                    text = str(item.get('description', '')).strip()
+                    # Use content field if available, otherwise fall back to description
+                    text = str(item.get('content', item.get('description', ''))).strip()
                     scraped_label = "(SCRAPED)" if item.get('raw_data', {}).get('content_enhanced') else "(SUMMARY_ONLY)"
                     print(f"[ANALYST][FINANCIAL] Processing: '{item.get('title', '')[:60]}' | Length: {len(text)} | {scraped_label}")
                     if not text:
@@ -418,9 +420,10 @@ class AnalystAgent:
         await self._ensure_kernel_initialized()
         procurement_events = []
         for item in items:
-            if item.get('type') == 'procurement':
+            if item.get('triage_result', {}).get('category') == 'Procurement Notice':
                 try:
-                    text = str(item.get('description', '')).strip()
+                    # Use content field if available, otherwise fall back to description
+                    text = str(item.get('content', item.get('description', ''))).strip()
                     scraped_label = "(SCRAPED)" if item.get('raw_data', {}).get('content_enhanced') else "(SUMMARY_ONLY)"
                     print(f"[ANALYST][PROCUREMENT] Processing: '{item.get('title', '')[:60]}' | Length: {len(text)} | {scraped_label}")
                     if not text:
@@ -463,10 +466,10 @@ class AnalystAgent:
         await self._ensure_kernel_initialized()
         earnings_events = []
         for item in items:
-            if (item.get('data_type') == 'filing' and 
-                item.get('type') in ['10-Q', '10-K']):
+            if item.get('triage_result', {}).get('category') == 'Earnings Call':
                 try:
-                    text = str(item.get('description', '')).strip()
+                    # Use content field if available, otherwise fall back to description
+                    text = str(item.get('content', item.get('description', ''))).strip()
                     scraped_label = "(SCRAPED)" if item.get('raw_data', {}).get('content_enhanced') else "(SUMMARY_ONLY)"
                     print(f"[ANALYST][EARNINGS] Processing: '{item.get('title', '')[:60]}' | Length: {len(text)} | {scraped_label}")
                     if not text:
