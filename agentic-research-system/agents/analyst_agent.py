@@ -331,6 +331,12 @@ class AnalystAgent:
     async def triage_data(self, data_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         await self._ensure_kernel_initialized()
         relevant_items = []
+        
+        # Debug: Check chunk_size type
+        if not isinstance(self.chunk_size, int):
+            print(f"⚠️  WARNING: chunk_size is {type(self.chunk_size)}, resetting to 3000")
+            self.chunk_size = 3000
+        
         for item in data_items:
             try:
                 # Use content field if available, otherwise fall back to description
@@ -373,6 +379,12 @@ class AnalystAgent:
     async def analyze_financial_events(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         await self._ensure_kernel_initialized()
         financial_events = []
+        
+        # Debug: Check chunk_size type
+        if not isinstance(self.chunk_size, int):
+            print(f"⚠️  WARNING: chunk_size is {type(self.chunk_size)}, resetting to 3000")
+            self.chunk_size = 3000
+        
         for item in items:
             if item.get('triage_result', {}).get('category') in ['News Article', 'SEC Filing']:
                 try:
@@ -390,10 +402,20 @@ class AnalystAgent:
                         financial_result = self._safe_json_parse(result, "financial_analysis")
                         if financial_result and financial_result.get('event_found', False):
                             value_usd = financial_result.get('value_usd', 0)
-                            if value_usd is not None and value_usd >= 10_000_000:
+                            event_type = financial_result.get('event_type', '')
+                            
+                            # Only require $10M for specific event types that have monetary thresholds
+                            monetary_event_types = ['M&A', 'Funding', 'Investment', 'Technology']
+                            if event_type in monetary_event_types and value_usd is not None:
+                                if value_usd >= 10_000_000:
+                                    item['financial_analysis'] = financial_result
+                                    financial_events.append(item)
+                                    print(f"[ANALYST][FINANCIAL] Event >=$10M: '{item.get('title', '')[:60]}' (${value_usd:,})")
+                            else:
+                                # For non-monetary events (regulatory, operational, etc.), include regardless of value
                                 item['financial_analysis'] = financial_result
                                 financial_events.append(item)
-                                print(f"[ANALYST][FINANCIAL] Event >=$10M: '{item.get('title', '')[:60]}' (${value_usd:,})")
+                                print(f"[ANALYST][FINANCIAL] Non-monetary event: '{item.get('title', '')[:60]}' ({event_type})")
                     else:
                         chunks = self._create_intelligent_chunks(text)
                         print(f"[ANALYST][FINANCIAL] {len(chunks)} chunks for: '{item.get('title', '')[:60]}'")
@@ -402,23 +424,43 @@ class AnalystAgent:
                             synthesized = chunk_results[0]
                             if synthesized.get('event_found', False):
                                 value_usd = synthesized.get('value_usd', 0)
-                                if value_usd is not None and value_usd >= 10_000_000:
+                                event_type = synthesized.get('event_type', '')
+                                
+                                # Only require $10M for specific event types that have monetary thresholds
+                                monetary_event_types = ['M&A', 'Funding', 'Investment', 'Technology']
+                                if event_type in monetary_event_types and value_usd is not None:
+                                    if value_usd >= 10_000_000:
+                                        item['financial_analysis'] = synthesized
+                                        item['analysis_metadata'] = {
+                                            'chunks_analyzed': len(chunks),
+                                            'analysis_method': 'map_reduce'
+                                        }
+                                        financial_events.append(item)
+                                        print(f"[ANALYST][FINANCIAL] Event >=$10M (chunks): '{item.get('title', '')[:60]}' (${value_usd:,})")
+                                else:
+                                    # For non-monetary events (regulatory, operational, etc.), include regardless of value
                                     item['financial_analysis'] = synthesized
                                     item['analysis_metadata'] = {
                                         'chunks_analyzed': len(chunks),
                                         'analysis_method': 'map_reduce'
                                     }
                                     financial_events.append(item)
-                                    print(f"[ANALYST][FINANCIAL] Event >=$10M (chunks): '{item.get('title', '')[:60]}' (${value_usd:,})")
+                                    print(f"[ANALYST][FINANCIAL] Non-monetary event (chunks): '{item.get('title', '')[:60]}' ({event_type})")
                 except Exception as e:
                     print(f"Error during financial analysis: {e}")
                     continue
-        print(f"Financial analysis complete: {len(financial_events)} events >= $10M found")
+        print(f"Financial analysis complete: {len(financial_events)} events found")
         return financial_events
 
     async def analyze_procurement(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         await self._ensure_kernel_initialized()
         procurement_events = []
+        
+        # Debug: Check chunk_size type
+        if not isinstance(self.chunk_size, int):
+            print(f"⚠️  WARNING: chunk_size is {type(self.chunk_size)}, resetting to 3000")
+            self.chunk_size = 3000
+        
         for item in items:
             if item.get('triage_result', {}).get('category') == 'Procurement Notice':
                 try:
@@ -436,10 +478,13 @@ class AnalystAgent:
                         procurement_result = self._safe_json_parse(result, "procurement_analysis")
                         if procurement_result and procurement_result.get('is_relevant', False):
                             value_usd = procurement_result.get('value_usd', 0)
-                            if value_usd is not None and value_usd >= 10_000_000:
-                                item['procurement_analysis'] = procurement_result
-                                procurement_events.append(item)
+                            # Include all relevant procurement events, regardless of value
+                            item['procurement_analysis'] = procurement_result
+                            procurement_events.append(item)
+                            if value_usd and value_usd >= 10_000_000:
                                 print(f"[ANALYST][PROCUREMENT] Relevant procurement >=$10M: '{item.get('title', '')[:60]}' (${value_usd:,})")
+                            else:
+                                print(f"[ANALYST][PROCUREMENT] Relevant procurement: '{item.get('title', '')[:60]}' (value: ${value_usd:, if value_usd else 'N/A'})")
                     else:
                         chunks = self._create_intelligent_chunks(text)
                         print(f"[ANALYST][PROCUREMENT] {len(chunks)} chunks for: '{item.get('title', '')[:60]}'")
@@ -448,23 +493,32 @@ class AnalystAgent:
                             synthesized = chunk_results[0]
                             if synthesized.get('is_relevant', False):
                                 value_usd = synthesized.get('value_usd', 0)
-                                if value_usd is not None and value_usd >= 10_000_000:
-                                    item['procurement_analysis'] = synthesized
-                                    item['analysis_metadata'] = {
-                                        'chunks_analyzed': len(chunks),
-                                        'analysis_method': 'map_reduce'
-                                    }
-                                    procurement_events.append(item)
+                                # Include all relevant procurement events, regardless of value
+                                item['procurement_analysis'] = synthesized
+                                item['analysis_metadata'] = {
+                                    'chunks_analyzed': len(chunks),
+                                    'analysis_method': 'map_reduce'
+                                }
+                                procurement_events.append(item)
+                                if value_usd and value_usd >= 10_000_000:
                                     print(f"[ANALYST][PROCUREMENT] Relevant procurement >=$10M (chunks): '{item.get('title', '')[:60]}' (${value_usd:,})")
+                                else:
+                                    print(f"[ANALYST][PROCUREMENT] Relevant procurement (chunks): '{item.get('title', '')[:60]}' (value: ${value_usd:, if value_usd else 'N/A'})")
                 except Exception as e:
                     print(f"Error during procurement analysis: {e}")
                     continue
-        print(f"Procurement analysis complete: {len(procurement_events)} relevant notices >= $10M found")
+        print(f"Procurement analysis complete: {len(procurement_events)} relevant notices found")
         return procurement_events
 
     async def analyze_earnings_calls(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         await self._ensure_kernel_initialized()
         earnings_events = []
+        
+        # Debug: Check chunk_size type
+        if not isinstance(self.chunk_size, int):
+            print(f"⚠️  WARNING: chunk_size is {type(self.chunk_size)}, resetting to 3000")
+            self.chunk_size = 3000
+        
         for item in items:
             if item.get('triage_result', {}).get('category') == 'Earnings Call':
                 try:
@@ -482,10 +536,13 @@ class AnalystAgent:
                         earnings_result = self._safe_json_parse(result, "earnings_analysis")
                         if earnings_result and earnings_result.get('guidance_found', False):
                             value_usd = earnings_result.get('value_usd', 0)
-                            if value_usd is not None and value_usd >= 10_000_000:
-                                item['earnings_analysis'] = earnings_result
-                                earnings_events.append(item)
+                            # Include all relevant earnings guidance, regardless of value
+                            item['earnings_analysis'] = earnings_result
+                            earnings_events.append(item)
+                            if value_usd and value_usd >= 10_000_000:
                                 print(f"[ANALYST][EARNINGS] Earnings guidance >=$10M: '{item.get('title', '')[:60]}' (${value_usd:,})")
+                            else:
+                                print(f"[ANALYST][EARNINGS] Earnings guidance: '{item.get('title', '')[:60]}' (value: ${value_usd:, if value_usd else 'N/A'})")
                     else:
                         chunks = self._create_intelligent_chunks(text)
                         print(f"[ANALYST][EARNINGS] {len(chunks)} chunks for: '{item.get('title', '')[:60]}'")
@@ -494,18 +551,21 @@ class AnalystAgent:
                             synthesized = chunk_results[0]
                             if synthesized.get('guidance_found', False):
                                 value_usd = synthesized.get('value_usd', 0)
-                                if value_usd is not None and value_usd >= 10_000_000:
-                                    item['earnings_analysis'] = synthesized
-                                    item['analysis_metadata'] = {
-                                        'chunks_analyzed': len(chunks),
-                                        'analysis_method': 'map_reduce'
-                                    }
-                                    earnings_events.append(item)
+                                # Include all relevant earnings guidance, regardless of value
+                                item['earnings_analysis'] = synthesized
+                                item['analysis_metadata'] = {
+                                    'chunks_analyzed': len(chunks),
+                                    'analysis_method': 'map_reduce'
+                                }
+                                earnings_events.append(item)
+                                if value_usd and value_usd >= 10_000_000:
                                     print(f"[ANALYST][EARNINGS] Earnings guidance >=$10M (chunks): '{item.get('title', '')[:60]}' (${value_usd:,})")
+                                else:
+                                    print(f"[ANALYST][EARNINGS] Earnings guidance (chunks): '{item.get('title', '')[:60]}' (value: ${value_usd:, if value_usd else 'N/A'})")
                 except Exception as e:
                     print(f"Error during earnings call analysis: {e}")
                     continue
-        print(f"Earnings call analysis complete: {len(earnings_events)} guidance items >= $10M found")
+        print(f"Earnings call analysis complete: {len(earnings_events)} guidance items found")
         return earnings_events
 
     async def generate_insights(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
