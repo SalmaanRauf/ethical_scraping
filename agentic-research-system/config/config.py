@@ -1,8 +1,14 @@
 import os
 from dotenv import load_dotenv
+from pathlib import Path
 
 # Load environment variables from .env file
 load_dotenv()
+
+def get_database_path():
+    """Get the absolute path to the database file."""
+    project_root = Path(__file__).parent.parent
+    return project_root / "data" / "research.db"
 
 class Config:
     """
@@ -31,7 +37,7 @@ class Config:
     BING_SEARCH_API_KEY = os.getenv("BING_SEARCH_API_KEY") # For direct Bing API if not using Azure AI Foundry
 
     # System Settings
-    DATABASE_PATH = os.getenv("DATABASE_PATH", "data/research.db")
+    DATABASE_PATH = str(get_database_path())
     REPORTS_DIR = os.getenv("REPORTS_DIR", "reports")
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
     

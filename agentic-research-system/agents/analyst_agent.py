@@ -11,6 +11,7 @@ from semantic_kernel.contents.text_content import TextContent
 from dataclasses import dataclass
 from semantic_kernel.functions.kernel_arguments import KernelArguments
 import traceback
+from pathlib import Path
 
 class AnalystAgent:
     def __init__(self, chunk_size: int = 3000, chunk_overlap: int = 500, max_chunks: int = 10):
@@ -35,7 +36,10 @@ class AnalystAgent:
             self._load_functions()
         
     def _load_functions(self):
-        sk_dir = os.path.join(os.path.dirname(__file__), "..", "sk_functions")
+        # Always resolve relative to the project root
+        project_root = Path(__file__).parent.parent
+        sk_dir = project_root / "sk_functions"
+        
         prompt_files = {
             "triage": "Triage_CategoryRouting_prompt.txt",
             "financial": "FinancialEvent_Detection_prompt.txt", 
@@ -45,7 +49,7 @@ class AnalystAgent:
             "company_takeaway": "CompanyTakeaway_skprompt.txt",
         }
         for name, fname in prompt_files.items():
-            path = os.path.normpath(os.path.join(sk_dir, fname))
+            path = sk_dir / fname
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     template = f.read()

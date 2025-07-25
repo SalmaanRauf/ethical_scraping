@@ -3,10 +3,15 @@ import hashlib
 import re
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
+from pathlib import Path
 
 class Archivist:
-    def __init__(self, db_path='data/research.db'):
-        self.db_path = db_path
+    def __init__(self, db_path=None):
+        if db_path is None:
+            # Always resolve relative to the project root
+            project_root = Path(__file__).parent.parent
+            db_path = project_root / "data" / "research.db"
+        self.db_path = str(db_path)
         
         # Similarity threshold for de-duplication (0.7 = quite similar)
         self.similarity_threshold = 0.7

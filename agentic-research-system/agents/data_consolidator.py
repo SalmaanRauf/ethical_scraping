@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 import re
 import logging
+from pathlib import Path
 from services.profile_loader import ProfileLoader
 
 logger = logging.getLogger(__name__)
@@ -15,9 +16,16 @@ class DataConsolidator:
     scoring and key term extraction.
     """
 
-    def __init__(self, profile_loader: ProfileLoader, output_dir: str = "data/consolidated_output"):
+    def __init__(self, profile_loader: ProfileLoader, output_dir: str = None):
+        if output_dir is None:
+            # Always resolve relative to the project root
+            project_root = Path(__file__).parent.parent
+            output_dir = project_root / "data" / "consolidated_output"
+        else:
+            output_dir = Path(output_dir)
+        
         self.output_dir = output_dir
-        os.makedirs(output_dir, exist_ok=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
         
         self.profile_loader = profile_loader
         self.company_profiles = self.profile_loader.load_profiles()
@@ -220,12 +228,12 @@ class DataConsolidator:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         
         json_filename = f"consolidated_{timestamp}.json"
-        json_filepath = os.path.join(self.output_dir, json_filename)
+        json_filepath = self.output_dir / json_filename
         with open(json_filepath, 'w', encoding='utf-8') as f:
             json.dump(items, f, indent=4, ensure_ascii=False)
             
         md_filename = f"analysis_doc_{timestamp}.md"
-        md_filepath = os.path.join(self.output_dir, md_filename)
+        md_filepath = self.output_dir / md_filename
         with open(md_filepath, 'w', encoding='utf-8') as f:
             f.write(document)
             

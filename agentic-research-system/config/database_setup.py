@@ -1,14 +1,20 @@
 import sqlite3
 import os
 from datetime import datetime
+from pathlib import Path
 
 def setup_database():
     """Creates the database and the findings table if they don't exist."""
     
-    # Ensure data directory exists
-    os.makedirs('data', exist_ok=True)
+    # Always resolve relative to the project root
+    project_root = Path(__file__).parent.parent
+    data_dir = project_root / "data"
+    db_path = data_dir / "research.db"
     
-    conn = sqlite3.connect('data/research.db')
+    # Ensure data directory exists
+    data_dir.mkdir(exist_ok=True)
+    
+    conn = sqlite3.connect(str(db_path))
     cursor = conn.cursor()
 
     # Create version table for migrations
@@ -98,6 +104,11 @@ def create_database_indices(cursor):
     for index_sql in indices:
         cursor.execute(index_sql)
 
+def get_database_path():
+    """Get the absolute path to the database file."""
+    project_root = Path(__file__).parent.parent
+    return project_root / "data" / "research.db"
+
 def run_migrations():
     """Run database migrations to update schema."""
     conn = sqlite3.connect('data/research.db')
@@ -131,36 +142,57 @@ def run_migrations():
     conn.close()
 
 def reset_database():
-    """Reset the database by dropping all tables and recreating them."""
-    conn = sqlite3.connect('data/research.db')
+    """Reset the database by dropping all tables."""
+    db_path = get_database_path()
+    
+    conn = sqlite3.connect(str(db_path))
     cursor = conn.cursor()
     
+    # Drop all tables
     cursor.execute("DROP TABLE IF EXISTS findings")
     cursor.execute("DROP TABLE IF EXISTS raw_data")
     cursor.execute("DROP TABLE IF EXISTS validation_log")
+    cursor.execute("DROP TABLE IF EXISTS schema_version")
+    cursor.execute("DROP TABLE IF EXISTS event_summaries")
     
     conn.commit()
     conn.close()
     
-    print("🗑️  Database reset complete.")
-    setup_database()
+    print("✅ Database reset complete. All tables dropped.")
 
 def check_database_status():
-    """Check the current status of the database."""
-    conn = sqlite3.connect('data/research.db')
+    """Check the status of the database and tables."""
+    db_path = get_database_path()
+    
+    if not db_path.exists():
+        print(f"❌ Database file not found: {db_path}")
+        return False
+    
+    conn = sqlite3.connect(str(db_path))
     cursor = conn.cursor()
     
     # Check if tables exist
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-    tables = cursor.fetchall()
+    tables = [row[0] for row in cursor.fetchall()]
     
-    print("📊 Database Status:")
-    for table in tables:
-        cursor.execute(f"SELECT COUNT(*) FROM {table[0]}")
-        count = cursor.fetchone()[0]
-        print(f"   - {table[0]}: {count} records")
+    required_tables = ['findings', 'raw_data', 'validation_log', 'schema_version']
+    missing_tables = [table for table in required_tables if table not in tables]
+    
+    if missing_tables:
+        print(f"❌ Missing tables: {missing_tables}")
+        return False
+    
+    # Check record counts
+    cursor.execute("SELECT COUNT(*) FROM findings")
+    findings_count = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT COUNT(*) FROM raw_data")
+    raw_data_count = cursor.fetchone()[0]
     
     conn.close()
+    
+    print(f"✅ Database status: {findings_count} findings, {raw_data_count} raw data records")
+    return True
 
 if __name__ == '__main__':
     setup_database()

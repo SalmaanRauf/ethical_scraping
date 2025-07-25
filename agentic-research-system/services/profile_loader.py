@@ -12,8 +12,14 @@ class ProfileLoader:
     Loads and validates company profiles from JSON files.
     """
     
-    def __init__(self, profiles_dir: str = "data/company_profiles"):
-        self.profiles_dir = Path(profiles_dir)
+    def __init__(self, profiles_dir: str = None):
+        # Always resolve relative to the project root
+        project_root = Path(__file__).parent.parent
+        if profiles_dir is None:
+            profiles_dir = project_root / "data" / "company_profiles"
+        else:
+            profiles_dir = Path(profiles_dir)
+        self.profiles_dir = profiles_dir
         self._validate_profiles_directory()
     
     def _validate_profiles_directory(self):

@@ -1,20 +1,21 @@
 import sqlite3
 import pandas as pd
+import os
 import time
 from datetime import date, datetime
-from typing import List, Dict, Any
-import os
+from typing import Dict, Any, List
 from functools import wraps
+from pathlib import Path
 
 def retry_file_operation(max_retries=3, delay=1):
-    """Decorator for retrying file operations with exponential backoff."""
+    """Decorator to retry file operations with exponential backoff."""
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
             for attempt in range(max_retries):
                 try:
                     return func(*args, **kwargs)
-                except IOError as e:
+                except (OSError, IOError) as e:
                     if attempt == max_retries - 1:
                         print(f"❌ File operation failed after {max_retries} attempts: {e}")
                         raise
@@ -25,11 +26,18 @@ def retry_file_operation(max_retries=3, delay=1):
     return decorator
 
 class Reporter:
-    def __init__(self, db_path='data/research.db'):
-        self.db_path = db_path
+    def __init__(self, db_path=None):
+        if db_path is None:
+            # Always resolve relative to the project root
+            project_root = Path(__file__).parent.parent
+            db_path = project_root / "data" / "research.db"
+        self.db_path = str(db_path)
         self.max_results_per_query = 1000  # Limit results to prevent memory issues
-        # Ensure reports directory exists
-        os.makedirs('reports', exist_ok=True)
+        
+        # Ensure reports directory exists in project root
+        project_root = Path(__file__).parent.parent
+        reports_dir = project_root / "reports"
+        reports_dir.mkdir(exist_ok=True)
 
     def _get_paginated_results(self, query: str, params: tuple, page_size: int = 100) -> pd.DataFrame:
         """Get results in pages to prevent memory issues with large datasets."""
