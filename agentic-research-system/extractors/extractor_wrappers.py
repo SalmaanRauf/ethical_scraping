@@ -59,7 +59,7 @@ class BingExtractorWrapper(BaseExtractorWrapper):
         await progress_handler.update_progress(f"Searching {self.source_name} for {company_name}...")
         # The Bing agent's get_industry_briefing returns a summary and citations
         # We need to format this into a list of dicts to match other extractors' output
-        bing_result = await self.extractor.get_industry_briefing(company_name)
+        bing_result = self.extractor.get_industry_briefing(company_name)  # Remove await - not async
         
         formatted_results = []
         if bing_result and bing_result.get('summary'):

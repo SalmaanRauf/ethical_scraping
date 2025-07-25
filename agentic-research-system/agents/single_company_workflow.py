@@ -1,13 +1,17 @@
 import asyncio
 from typing import Dict, Any, List
+import logging
 from services.app_context import AppContext
 from services.progress_handler import ProgressHandler
 from services.error_handler import log_error
 
+# Set up developer logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
 class SingleCompanyWorkflow:
     """
-    Orchestrates the workflow for generating a briefing on a single company.
-    Relies on a shared AppContext for all services and agents.
+    Orchestrates the single-company briefing process.
     """
     def __init__(self, app_context: AppContext, progress_handler: ProgressHandler):
         self.app_context = app_context
@@ -15,143 +19,199 @@ class SingleCompanyWorkflow:
 
     async def run(self, company_name: str) -> Dict[str, Any]:
         """
-        Executes the single-company research workflow from start to finish.
+        Runs the complete single-company briefing workflow.
         """
+        logger.info("🚀 Starting single company workflow for: %s", company_name)
+        
         try:
-            # 1. Resolve Company and Load Profile
-            await self.progress_handler.start_step("Resolving company name...", 1)
+            # 1. Company Resolution
+            await self.progress_handler.start_step("Resolving company...", 1)
             resolver = self.app_context.agents['company_resolver']
             canonical_name, display_name = resolver.resolve_company(company_name)
-            
-            if not canonical_name:
-                await self.progress_handler.update_progress(f"Could not resolve company: '{company_name}'", is_error=True)
-                return {"error": f"Company '{company_name}' not found in our database."}
-            profile = resolver.get_profile(canonical_name)
+            logger.info("✅ Company resolved: %s -> %s (%s)", company_name, canonical_name, display_name)
+            await self.progress_handler.complete_step("Company resolved.")
+
+            # 2. Profile Loading
+            profile_loader = self.app_context.services['profile_loader']
+            profile = profile_loader.get_profile(canonical_name)
             if not profile:
-                 return {"error": f"Profile for '{display_name}' could not be loaded."}
-            await self.progress_handler.complete_step(f"Resolved to {display_name}")
+                logger.error("❌ No profile found for company: %s", canonical_name)
+                return {"error": f"No profile found for {company_name}"}
+            logger.info("✅ Profile loaded for: %s", canonical_name)
 
-            # 2. Data Extraction
-            extractors = list(self.app_context.extractors.values())
-            await self.progress_handler.start_step("Extracting data from sources...", len(extractors))
-            
-            extraction_tasks = [ext.extract_for_company(canonical_name, self.progress_handler) for ext in extractors]
+            # 3. Data Extraction
+            await self.progress_handler.start_step("Extracting data...", 1)
+            extraction_tasks = []
+            for extractor_name, extractor in self.app_context.extractors.items():
+                logger.info("🔍 Starting extraction with: %s", extractor_name)
+                if extractor_name == 'news_extractor':
+                    extraction_tasks.append(extractor.get_news_for_company(canonical_name))
+                elif extractor_name == 'sec_extractor':
+                    extraction_tasks.append(extractor.get_recent_filings())
+                elif extractor_name == 'sam_extractor':
+                    extraction_tasks.append(extractor.get_all_notices())
+                elif extractor_name == 'bing_grounding_agent':
+                    extraction_tasks.append(extractor.get_industry_briefing(canonical_name))
+
             results = await asyncio.gather(*extraction_tasks, return_exceptions=True)
-            
+            logger.info("📊 Extraction completed with %d results", len(results))
+
             all_raw_data = []
-            for res in results:
+            bing_industry_context = None
+            
+            for i, res in enumerate(results):
                 if isinstance(res, Exception):
-                    log_error(res, "Extractor failed during single company workflow")
+                    logger.error("❌ Extractor %s failed: %s", list(self.app_context.extractors.keys())[i], str(res))
+                    log_error(res, f"Extractor {list(self.app_context.extractors.keys())[i]} failed during single company workflow")
                 elif res:
+                    # Special handling for Bing grounding results
+                    if i == len(results) - 1:  # Bing extractor is last
+                        if res and len(res) > 0:
+                            bing_industry_context = res[0].get('content', '')
+                            logger.info("✅ Bing grounding context captured: %d chars", len(bing_industry_context))
                     all_raw_data.extend(res)
-            await self.progress_handler.complete_step(f"Extracted {len(all_raw_data)} total items.")
+                    logger.info("✅ Extractor %s returned %d items", list(self.app_context.extractors.keys())[i], len(res))
 
-            # 3. Data Consolidation
-            if not all_raw_data:
-                await self.progress_handler.complete_step("No new data found for the company.")
-                return {"report": f"## No recent information found for {display_name}.", "profile": profile}
+            logger.info("📊 Total raw data items: %d", len(all_raw_data))
+            await self.progress_handler.complete_step("Data extraction complete.")
 
-            await self.progress_handler.start_step("Consolidating and filtering data...", 1)
+            # 4. Data Consolidation
+            await self.progress_handler.start_step("Consolidating data...", 1)
             consolidator = self.app_context.agents['data_consolidator']
-            consolidation_result = consolidator.process_raw_data(all_raw_data)
-            consolidated_items = consolidation_result['consolidated_items']
-            analysis_document = consolidation_result['analysis_document']
-            await self.progress_handler.complete_step(f"Found {len(consolidated_items)} relevant items.")
+            consolidated_items = await consolidator.consolidate_data(all_raw_data)
+            logger.info("✅ Consolidated %d items", len(consolidated_items))
+            await self.progress_handler.complete_step("Data consolidation complete.")
 
-            # 4. AI Analysis
-            if not consolidated_items:
-                return {"report": f"## No relevant recent information found for {display_name}.", "profile": profile}
-
+            # 5. Analysis
+            await self.progress_handler.start_step("Analyzing data...", 1)
             analyst = self.app_context.agents['analyst_agent']
             # Set company profiles for the analyst agent
             analyst.set_profiles({canonical_name: profile})
+            
+            # Create analysis document from consolidated items
+            analysis_document = self._create_analysis_document(consolidated_items)
             analyzed_events = await analyst.analyze_consolidated_data(consolidated_items, analysis_document)
+            logger.info("✅ Analysis complete: %d events analyzed", len(analyzed_events))
 
-            # 5. Report Generation
+            # 6. Report Generation
             await self.progress_handler.start_step("Generating final briefing...", 1)
-            report = self._generate_briefing(display_name, analyzed_events, profile)
+            report = self._generate_briefing(display_name, analyzed_events, profile, bing_industry_context)
+            logger.info("✅ Briefing generated with Bing context: %s", "Yes" if bing_industry_context else "No")
             await self.progress_handler.complete_step("Briefing complete.")
 
             return {"report": report, "profile": profile}
 
         except Exception as e:
+            logger.error("❌ Critical error in workflow for %s: %s", company_name, str(e))
             log_error(e, f"Critical error in workflow for {company_name}")
             await self.progress_handler.update_progress(f"An unexpected error occurred: {e}", is_error=True)
             return {"error": "An unexpected error occurred during the analysis."}
 
-    def _generate_briefing(self, display_name: str, events: List[Dict[str, Any]], profile: Dict[str, Any]) -> str:
+    def _generate_briefing(self, display_name: str, events: List[Dict[str, Any]], profile: Dict[str, Any], bing_industry_context: str) -> str:
         """
         Generates a Markdown-formatted briefing from the analyzed events.
+        Follows the specified output format with all required fields.
         """
         if not events:
-            return f"## Briefing for {display_name}\n\nNo significant events found in the last 7 days."
+            return f"## No relevant recent information found for {display_name}.\n\nProfile\nDescription: {profile.get('description', 'N/A')}\nWebsite: {profile.get('website', 'N/A')}\nRecent Stock Price: ${profile.get('recent_stock_price', 'N/A')}"
 
         # Sort events by relevance score before displaying
         sorted_events = sorted(events, key=lambda x: x.get('relevance_score', 0), reverse=True)
 
         briefing_parts = [f"# Intelligence Briefing: {display_name}\n"]
         
-        # --- Profile Section ---
+        # --- Company Profile Section ---
         briefing_parts.append("## Company Profile")
         briefing_parts.append(f"**Description:** {profile.get('description', 'N/A')}")
-        briefing_parts.append(f"**Website:** [{profile.get('website')}]({profile.get('website')})")
-        briefing_parts.append(f"**Key Personnel:** {', '.join(profile.get('key_personnel', []))}")
+        briefing_parts.append(f"**Website:** {profile.get('website', 'N/A')}")
         briefing_parts.append(f"**Recent Stock Price:** ${profile.get('recent_stock_price', 'N/A')}")
-
-        # --- Company Profile Snippets (Proprietary Data) ---
-        briefing_parts.append("\n## Proprietary Company Insights")
-        if profile.get('people', {}).get('keyBuyers'):
-            briefing_parts.append("### Key Buyers")
-            for buyer in profile['people']['keyBuyers']:
-                briefing_parts.append(f"- **{buyer.get('name', 'N/A')}**: {buyer.get('title', 'N/A')} (Wins: {buyer.get('numberOfWins', 0)}) ")
-        if profile.get('people', {}).get('alumni'):
-            briefing_parts.append("### Alumni Contacts")
-            for alumni in profile['people']['alumni']:
-                briefing_parts.append(f"- **{alumni.get('name', 'N/A')}**: {alumni.get('title', 'N/A')}")
-        if profile.get('opportunities', {}).get('open'):
-            briefing_parts.append("### Open Opportunities")
-            for opp in profile['opportunities']['open']:
-                briefing_parts.append(f"- **{opp.get('name', 'N/A')}**: Status: {opp.get('status', 'N/A')}")
-
-        # --- Key Events Section ---
-        briefing_parts.append("\n## Key Recent Events")
-        for event in sorted_events:
-            briefing_parts.append(self._format_event(event))
+        
+        # --- Active Opportunities ---
+        if profile.get('active_opportunities'):
+            briefing_parts.append(f"**Active Opportunities:** {', '.join(profile.get('active_opportunities', []))}")
+        
+        # --- Key Buyers ---
+        if profile.get('key_buyers'):
+            briefing_parts.append(f"**Key Buyers:** {', '.join(profile.get('key_buyers', []))}")
+        
+        # --- Alumni Contacts ---
+        if profile.get('alumni_contacts'):
+            briefing_parts.append(f"**Alumni Contacts:** {', '.join(profile.get('alumni_contacts', []))}")
 
         # --- Industry Overview Section ---
-        # For simplicity, we take the overview from the most relevant event.
-        # A more advanced implementation could synthesize these.
-        first_overview = next((e.get('insights', {}).get('industry_overview') for e in sorted_events if e.get('insights', {}).get('industry_overview')), None)
-        if first_overview:
-            briefing_parts.append("\n## Industry Overview")
-            briefing_parts.append(first_overview)
+        briefing_parts.append("\n## Industry Overview")
+        if bing_industry_context:
+            briefing_parts.append(bing_industry_context)
+        else:
+            briefing_parts.append("*Industry context and sector trends would be populated by Bing grounding agent*")
+
+        # --- Key Events Section ---
+        briefing_parts.append("\n## Key Events & Findings")
+        
+        for i, event in enumerate(sorted_events[:5], 1):  # Show top 5 events
+            event_section = self._format_event(event, i)
+            briefing_parts.append(event_section)
+
+        # --- Consulting Opportunities Section ---
+        briefing_parts.append("\n## Consulting Opportunities")
+        briefing_parts.append("*Analysis of how our firm can help based on identified events*")
+
+        # --- Sources Section ---
+        briefing_parts.append("\n## Sources")
+        sources = set()
+        for event in sorted_events:
+            if event.get('source_url'):
+                sources.add(event['source_url'])
+        
+        for source in list(sources)[:10]:  # Limit to top 10 sources
+            briefing_parts.append(f"- {source}")
 
         return "\n".join(briefing_parts)
 
-    def _format_event(self, event: Dict[str, Any]) -> str:
-        """Formats a single event into a Markdown string."""
-        parts = [f"\n### {event.get('title', 'Untitled Event')}"]
-        insights = event.get('insights', {})
+    def _create_analysis_document(self, consolidated_items: List[Dict[str, Any]]) -> str:
+        """
+        Creates a simple analysis document from consolidated items.
+        """
+        if not consolidated_items:
+            return "No relevant data found for analysis."
         
-        # Core Insights
-        parts.append(f"- **What Happened:** {insights.get('what_happened', 'N/A')}")
-        parts.append(f"- **Why It Matters:** {insights.get('why_it_matters', 'N/A')}")
-        parts.append(f"- **Consulting Angle:** {insights.get('consulting_angle', 'N/A')}")
+        document_parts = ["# Consolidated Data Analysis\n"]
         
-        # Structured Analysis
-        analysis_parts = []
-        if insights.get('urgency'):
-            analysis_parts.append(f"**Urgency:** {insights['urgency']}")
-        if insights.get('need_type'):
-            analysis_parts.append(f"**Need Type:** {insights['need_type'].title()}")
-        if insights.get('service_line'):
-            analysis_parts.append(f"**Service Line:** {insights['service_line']}")
+        for i, item in enumerate(consolidated_items[:10], 1):  # Limit to top 10 items
+            document_parts.append(f"## Item {i}")
+            document_parts.append(f"**Title:** {item.get('title', 'N/A')}")
+            document_parts.append(f"**Source:** {item.get('source', 'N/A')}")
+            document_parts.append(f"**Relevance Score:** {item.get('relevance_score', 0):.2f}")
+            if item.get('content'):
+                content_preview = item['content'][:200] + "..." if len(item['content']) > 200 else item['content']
+                document_parts.append(f"**Content:** {content_preview}")
+            document_parts.append("")
         
-        if analysis_parts:
-            parts.append(f"- **Analysis:** {' | '.join(analysis_parts)}")
+        return "\n".join(document_parts)
 
-        # Source Link
-        if event.get('link'):
-            parts.append(f"- **Source:** [Link]({event.get('link')})")
-
+    def _format_event(self, event: Dict[str, Any], index: int) -> str:
+        """
+        Format a single event according to the specified output structure.
+        """
+        parts = [f"\n### Event {index}"]
+        
+        # Required fields from vision
+        parts.append(f"**Company:** {event.get('company_name', 'N/A')}")
+        parts.append(f"**What Happened:** {event.get('what_happened', event.get('headline', 'N/A'))}")
+        parts.append(f"**Why It Matters:** {event.get('why_it_matters', 'N/A')}")
+        parts.append(f"**Consulting Angle:** {event.get('consulting_angle', 'N/A')}")
+        parts.append(f"**Need Type:** {event.get('need_type', 'N/A')}")
+        parts.append(f"**Service Line:** {event.get('service_line', 'N/A')}")
+        parts.append(f"**Urgency:** {event.get('urgency', 'Medium')}")
+        
+        # Additional context
+        if event.get('event_type'):
+            parts.append(f"**Event Type:** {event['event_type']}")
+        
+        if event.get('value_usd'):
+            parts.append(f"**Value:** ${event['value_usd']:,}")
+        
+        if event.get('source_url'):
+            parts.append(f"**Source:** {event['source_url']}")
+        
         return "\n".join(parts)

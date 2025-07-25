@@ -2,12 +2,17 @@ import asyncio
 import re
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
+import logging
 from bs4 import BeautifulSoup
 from agents.scraper_agent import ScraperAgent
 from config.config import AppConfig
 from services.error_handler import log_error
 from extractors.http_utils import safe_async_get
 from services.profile_loader import ProfileLoader
+
+# Set up developer logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 class SAMExtractor:
     """
@@ -22,11 +27,22 @@ class SAMExtractor:
         self.base_url = "https://api.sam.gov/prod/opportunities/v2/search"
         self.keywords = AppConfig.SAM_KEYWORDS
         self.profile_loader = profile_loader
-        self.company_profiles = self.profile_loader.load_profiles()
+        # Use lazy loading instead of loading profiles in constructor
+        self._company_profiles = None
 
         # API quota management
         self.api_calls_made = 0
         self.max_api_calls = 5 # Max 5 API calls as per requirement
+        
+        logger.info("🔍 SAMExtractor initialized")
+        logger.info("🔑 SAM API key configured: %s", "Yes" if self.api_key else "No")
+
+    @property
+    def company_profiles(self):
+        """Lazy load company profiles when first accessed."""
+        if self._company_profiles is None:
+            self._company_profiles = self.profile_loader.load_profiles()
+        return self._company_profiles
 
     async def get_all_notices(self, days_back: int = None) -> List[Dict[str, Any]]:
         """
@@ -34,56 +50,75 @@ class SAMExtractor:
         """
         if days_back is None:
             days_back = AppConfig.SAM_DAYS_BACK
-        """
-        Fetches all recent notices and enhances them with full content.
-        """
+        
+        logger.info("📋 Starting SAM.gov extraction (days_back: %d)", days_back)
+        
         # API-First Approach
         notice_summaries = await self._fetch_notices_from_api(days_back)
+        logger.info("📊 SAM API returned %d notices", len(notice_summaries))
 
         # Scraper-Fallback Approach
         if not notice_summaries:
-            log_error(Exception("SAM.gov API failed or returned no results, falling back to scraper."), "SAM.gov API Fallback")
+            logger.warning("⚠️  SAM.gov API failed or returned no results, falling back to scraper")
             notice_summaries = await self._fetch_notices_from_scraper()
+            logger.info("📊 SAM scraper returned %d notices", len(notice_summaries))
 
         if not notice_summaries:
+            logger.warning("⚠️  No SAM.gov notices found")
             return []
 
         # Graceful Scraper Enhancement
+        logger.info("🔍 Enhancing %d notices with full content", len(notice_summaries))
         enhancement_tasks = [self._gracefully_enhance_notice(notice) for notice in notice_summaries]
         enhanced_notices = await asyncio.gather(*enhancement_tasks)
         
         # Apply business logic filters after enhancement
         filtered_notices = self._apply_business_filters(enhanced_notices)
+        logger.info("✅ SAM extraction complete: %d filtered notices", len(filtered_notices))
         
         return [notice for notice in filtered_notices if notice] # Filter out any None results
 
     async def _fetch_notices_from_api(self, days_back: int) -> List[Dict[str, Any]]:
         """API-FIRST: Tries to fetch notice summaries from the official SAM.gov API."""
         if not self.api_key:
+            logger.warning("⚠️  SAM.gov API key not configured")
             return []
         
         if self.api_calls_made >= self.max_api_calls:
-            log_error(Exception(f"SAM.gov API quota limit reached ({self.api_calls_made}/{self.max_api_calls})."), "SAM.gov API Quota Exceeded")
+            logger.error("❌ SAM.gov API quota limit reached (%d/%d)", self.api_calls_made, self.max_api_calls)
             return []
 
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days_back)
 
+        # More conservative parameters to avoid 400 errors
         params = {
             'api_key': self.api_key,
-            'limit': 25, # Fetch a reasonable number of recent notices
-            'sortBy': '-modifiedDate',
+            'limit': 10,  # Reduced from 25 to be more conservative
+            'sortBy': 'modifiedDate',  # Changed from -modifiedDate to avoid potential issues
             'postedFrom': start_date.strftime('%Y-%m-%d'),
             'postedTo': end_date.strftime('%Y-%m-%d'),
         }
-        response = await safe_async_get(self.base_url, params=params)
-        if not response:
-            return []
-
+        
+        logger.info("🔍 SAM API request: %s", self.base_url)
+        
         try:
+            response = await safe_async_get(self.base_url, params=params)
+            if not response:
+                logger.error("❌ No response from SAM.gov API")
+                return []
+
+            # Check for HTTP error status
+            if response.status_code != 200:
+                logger.error("❌ SAM.gov API returned status %d: %s", response.status_code, response.text)
+                return []
+
             data = response.json()
-            self.api_calls_made += 1 # Increment call count only on successful API response
-            return [self._format_api_notice(notice) for notice in data.get("opportunitiesData", [])]
+            self.api_calls_made += 1  # Increment call count only on successful API response
+            
+            notices = [self._format_api_notice(notice) for notice in data.get("opportunitiesData", [])]
+            logger.info("✅ SAM API call successful: %d notices", len(notices))
+            return notices
         except Exception as e:
             log_error(e, "Failed to parse SAM.gov API response")
             return []
@@ -96,27 +131,43 @@ class SAMExtractor:
         keyword_query = " OR ".join([f'"{k}"' for k in self.keywords])
         search_url = f"https://sam.gov/search/?keywords={keyword_query}&sort=-modifiedDate&page=1"
         
+        logger.info("🔍 SAM scraper URL: %s", search_url)
+        
         html_content = await self.scraper.fetch_content(search_url, wait_selector="[id^='search-results-']")
         if not html_content:
+            logger.error("❌ SAM scraper failed to fetch content")
             return []
         
-        return self._parse_search_results_page(html_content)
+        logger.info("✅ SAM scraper fetched %d chars of HTML", len(html_content))
+        
+        notices = self._parse_search_results_page(html_content)
+        logger.info("📊 SAM scraper parsed %d notices", len(notices))
+        return notices
 
     def _parse_search_results_page(self, html: str) -> List[Dict[str, Any]]:
+        """Parses the SAM.gov search results page HTML."""
         soup = BeautifulSoup(html, 'html.parser')
         results = []
-        for item in soup.select("[id^='search-results-']"):
-            title_tag = item.select_one("h3 a")
+        
+        # Look for notice items
+        notice_items = soup.find_all("div", {"class": "search-result"})
+        logger.info("🔍 Found %d notice items in HTML", len(notice_items))
+        
+        for item in notice_items:
+            title_tag = item.find("a", {"class": "title"})
             title = title_tag.text.strip() if title_tag else "No Title"
             link = "https://sam.gov" + title_tag['href'] if title_tag and title_tag.has_attr('href') else ""
             content_div = item.find("div", {"class": "display-notes"})
             summary_content = content_div.text.strip() if content_div else ""
+            
             results.append({
                 "source": "SAM.gov Scraper",
                 "title": title,
                 "link": link,
                 "content": summary_content,
             })
+        
+        logger.info("✅ Parsed %d notices from HTML", len(results))
         return results
 
     async def _gracefully_enhance_notice(self, notice: Dict[str, Any]) -> Dict[str, Any]:
@@ -126,16 +177,29 @@ class SAMExtractor:
         """
         url = notice.get('link')
         if not url:
+            logger.warning("⚠️  No URL found for notice: %s", notice.get('title', 'Unknown'))
             return notice
+        
         try:
+            logger.debug("🔍 Scraping SAM notice: %s", url)
             html_content = await self.scraper.fetch_content(url, wait_selector="#description")
+            
             if html_content:
                 soup = BeautifulSoup(html_content, 'html.parser')
                 description_section = soup.find(id="description")
                 if description_section:
-                    notice['content'] = description_section.get_text(separator='\n', strip=True)
+                    full_content = description_section.get_text(separator='\n', strip=True)
+                    notice['content'] = full_content
+                    logger.info("✅ Successfully scraped SAM notice: %s (%d chars)", 
+                               notice.get('title', 'Unknown'), len(full_content))
+                else:
+                    logger.warning("⚠️  No description section found for SAM notice: %s", notice.get('title', 'Unknown'))
+            else:
+                logger.warning("⚠️  Failed to scrape content for SAM notice: %s", notice.get('title', 'Unknown'))
+                
         except Exception as e:
-            log_error(e, f"Graceful enhancement failed for SAM.gov URL {url}. Falling back to summary.")
+            logger.error("❌ Error scraping SAM notice %s: %s", url, str(e))
+        
         return notice
 
     def _format_api_notice(self, notice: Dict) -> Dict:

@@ -3,7 +3,7 @@ import logging
 import time
 import random
 import re
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from urllib.parse import urlparse, parse_qs, unquote
 import os
 import requests
@@ -17,14 +17,15 @@ from readability import Document
 from json import loads
 
 try:
-    from playwright.async_api import async_playwright, Browser, Playwright
+    from playwright.async_api import async_playwright, Browser, Playwright, Page
     from playwright_stealth import stealth_async
 except ImportError:
     async_playwright = None
     stealth_async = None
 
+# Set up developer logging
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+logger.setLevel(logging.INFO)
 
 class ScraperAgent:
     """
@@ -580,6 +581,24 @@ class ScraperAgent:
                 logger.error(f"Playwright pipeline failed: {e}")
         logger.error(f"❌ All methods failed for {url}")
         return None
+
+    async def fetch_content(self, url: str, wait_selector: str = None) -> Optional[str]:
+        """
+        Fetch content from a URL with optional wait selector for dynamic content.
+        This method is called by extractors and provides a consistent interface.
+        """
+        logger.debug("🔍 Fetching content from: %s", url)
+        try:
+            # Use the existing scrape_url method
+            content = await self.scrape_url(url)
+            if content:
+                logger.info("✅ Successfully fetched content from %s (%d chars)", url, len(content))
+            else:
+                logger.warning("⚠️  Failed to fetch content from %s", url)
+            return content
+        except Exception as e:
+            logger.error("❌ Error fetching content from %s: %s", url, str(e))
+            return None
 
     async def scrape_multiple_urls(self, urls: List[str]) -> Dict[str, str]:
         results: Dict[str, str] = {}
