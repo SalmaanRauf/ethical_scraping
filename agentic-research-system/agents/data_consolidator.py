@@ -112,6 +112,17 @@ class DataConsolidator:
             item['source_type'] = self._determine_source_type(item)
             item['key_terms'] = self._extract_key_terms(item)
         
+        # Save consolidated data
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = self.output_dir / f"consolidated_{timestamp}.json"
+        
+        try:
+            with open(output_file, 'w') as f:
+                json.dump(relevant_items, f, indent=2, default=str)
+            logger.info("💾 Consolidated data saved to: %s", output_file)
+        except Exception as e:
+            log_error(e, f"Failed to save consolidated data to {output_file}")
+        
         return relevant_items
 
     def _calculate_relevance_score(self, item: Dict[str, Any]) -> float:
