@@ -125,6 +125,30 @@ class DataConsolidator:
         
         return relevant_items
 
+    def process_raw_data(self, raw_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Process raw data from extractors and return consolidated results.
+        This method is called by the main workflow and returns the expected format.
+        """
+        logger.info("📊 Processing raw data with %d items", len(raw_data))
+        
+        # Use the async consolidate_data method
+        consolidated_items = asyncio.run(self.consolidate_data(raw_data))
+        
+        # Create analysis document
+        analysis_document = self._create_analysis_document(consolidated_items)
+        
+        # Save output files
+        output_files = self._save_output(consolidated_items, analysis_document)
+        
+        logger.info("✅ Data processing complete: %d consolidated items", len(consolidated_items))
+        
+        return {
+            'consolidated_items': consolidated_items,  # This is what main.py expects
+            'analysis_document': analysis_document,
+            'output_files': output_files
+        }
+
     def _calculate_relevance_score(self, item: Dict[str, Any]) -> float:
         """
         Calculate a relevance score based on company mentions and high-impact keywords.
