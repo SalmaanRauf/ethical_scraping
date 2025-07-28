@@ -295,10 +295,16 @@ class AnalystAgent:
         adapted_data = []
         for item in events:
             raw_data = item.get('raw_data', {})
+            
+            # Better company name extraction
+            company = item.get('company', '')
+            if not company and raw_data:
+                company = raw_data.get('company', raw_data.get('companyName', ''))
+            
             adapted_item = {
                 'title': item.get('title', raw_data.get('title', '')),
                 'description': item.get('content', item.get('description', raw_data.get('description', ''))),  # Use content field from consolidated data
-                'company': item.get('company', raw_data.get('company', '')),
+                'company': company,
                 'source': item.get('source_name', raw_data.get('source', '')),
                 'url': item.get('url', raw_data.get('link', '')),
                 'published_date': item.get('published_date', raw_data.get('date', '')),
@@ -308,14 +314,18 @@ class AnalystAgent:
             }
             source = adapted_item['source'].lower()
             if 'sec' in source:
-                adapted_item['type'] = 'news'
+                adapted_item['type'] = 'sec_filing'  # Changed from 'news' to 'sec_filing'
                 adapted_item['data_type'] = 'filing'
+                adapted_item['source_type'] = 'SEC Filing'  # Set explicit source type
             elif 'sam.gov' in source:
                 adapted_item['type'] = 'procurement'
+                adapted_item['source_type'] = 'Procurement Notice'  # Set explicit source type
             elif 'news' in source:
                 adapted_item['type'] = 'news'
+                adapted_item['source_type'] = 'News Article'  # Set explicit source type
             else:
                 adapted_item['type'] = 'unknown'
+                adapted_item['source_type'] = 'Unknown'  # Set explicit source type
             if isinstance(raw_data, dict) and 'value_usd' in raw_data:
                 adapted_item['value_usd'] = raw_data['value_usd']
             if adapted_item['type'] == 'news':
@@ -656,10 +666,23 @@ class AnalystAgent:
     async def analyze_all_data(self, data_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         print(f"Starting analysis of {len(data_items)} data items...")
         relevant_items = await self.triage_data(data_items)
-        financial_events = await self.analyze_financial_events(relevant_items)
-        procurement_events = await self.analyze_procurement(relevant_items)
-        earnings_events = await self.analyze_earnings_calls(relevant_items)
-        all_events = financial_events + procurement_events + earnings_events
+        
+        # Separate items by type for specialized analysis
+        sec_filings = [item for item in relevant_items if item.get('type') == 'sec_filing']
+        news_items = [item for item in relevant_items if item.get('type') == 'news']
+        procurement_items = [item for item in relevant_items if item.get('type') == 'procurement']
+        
+        print(f"📊 Analysis breakdown: {len(sec_filings)} SEC filings, {len(news_items)} news items, {len(procurement_items)} procurement items")
+        
+        # Analyze each type separately
+        financial_events = await self.analyze_financial_events(news_items)
+        procurement_events = await self.analyze_procurement(procurement_items)
+        earnings_events = await self.analyze_earnings_calls(news_items)
+        
+        # SEC filings get special treatment - analyze them as financial events
+        sec_events = await self.analyze_financial_events(sec_filings)
+        
+        all_events = financial_events + procurement_events + earnings_events + sec_events
         final_insights = await self.generate_insights(all_events)
         print(f"Analysis complete: {len(final_insights)} high-impact events identified")
         return final_insights

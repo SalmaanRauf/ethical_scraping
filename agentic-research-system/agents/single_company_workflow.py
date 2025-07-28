@@ -115,7 +115,7 @@ class SingleCompanyWorkflow:
         # Company Profile Snippets
         profile_snippets = {}
         if profile.get('people', {}).get('keyBuyers'):
-            # Sort key buyers by numberOfWins and take top 2
+            # Sort key buyers bynumberOfWins and take top 2
             key_buyers = sorted(
                 profile['people']['keyBuyers'], 
                 key=lambda x: x.get('numberOfWins', 0), 
@@ -253,6 +253,24 @@ class SingleCompanyWorkflow:
         
         # Required fields from vision
         parts.append(f"**Company:** {event.get('company', 'N/A')}")
+        
+        # Add Source Type field
+        source_type = event.get('source_type', '')
+        if not source_type:
+            # Determine source type from source field
+            source = event.get('source', '').lower()
+            if 'sec' in source or 'filing' in source:
+                source_type = 'SEC Filing'
+            elif 'sam.gov' in source or 'procurement' in source:
+                source_type = 'Procurement Notice'
+            elif 'news' in source or 'article' in source or 'gnews' in source or 'rss' in source:
+                source_type = 'News Article'
+            elif 'bing' in source:
+                source_type = 'Industry Research'
+            else:
+                source_type = 'Unknown'
+        
+        parts.append(f"**Source Type:** {source_type}")
         parts.append(f"**What Happened:** {insights.get('what_happened', event.get('title', 'N/A'))}")
         parts.append(f"**Why It Matters:** {insights.get('why_it_matters', 'N/A')}")
         parts.append(f"**Consulting Angle:** {insights.get('consulting_angle', 'N/A')}")
@@ -277,7 +295,7 @@ class SingleCompanyWorkflow:
     def _deduplicate_events(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Deduplicate events to prevent repeated news events.
-        Compares event titles and content to identify duplicates.
+        SEC filings are treated as unique events and not deduplicated.
         """
         if not events:
             return events
@@ -286,6 +304,14 @@ class SingleCompanyWorkflow:
         def get_event_key(event):
             insights = event.get('insights', {})
             what_happened = insights.get('what_happened', event.get('title', ''))
+            source = event.get('source', '').lower()
+            
+            # SEC filings should be treated as unique based on form type and date
+            if 'sec' in source or 'filing' in source:
+                form_type = event.get('form_type', '')
+                filed_date = event.get('published_date', '')
+                return f"SEC_{form_type}_{filed_date}"  # Unique key for SEC filings
+            
             # Normalize the text for comparison
             return what_happened.lower().strip()
         
@@ -294,8 +320,15 @@ class SingleCompanyWorkflow:
         
         for event in events:
             event_key = get_event_key(event)
+            source = event.get('source', '').lower()
             
-            # Check if this event is similar to any we've seen
+            # SEC filings are always unique - don't deduplicate them
+            if 'sec' in source or 'filing' in source:
+                deduplicated.append(event)
+                seen_events.add(event_key)
+                continue
+            
+            # Check if this event is similar to any we've seen (only for non-SEC events)
             is_duplicate = False
             for seen_key in seen_events:
                 # Use simple similarity check - if key phrases match, consider it duplicate
