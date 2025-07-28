@@ -91,6 +91,39 @@ class SECExtractor:
         
         return None
 
+    def _format_sec_filing(self, filing: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Format a SEC filing into the standard data structure expected by the consolidator.
+        """
+        # Extract key information from the SEC filing
+        title = filing.get('description', 'SEC Filing')
+        company_name = filing.get('companyName', 'Unknown Company')
+        form_type = filing.get('formType', 'Unknown')
+        
+        # Create a proper title
+        if title == 'SEC Filing':
+            title = f"{form_type} Filing - {company_name}"
+        
+        # Get content from full_content if available, otherwise use description
+        content = filing.get('full_content', filing.get('description', ''))
+        
+        # Format the standardized structure
+        formatted_filing = {
+            'source': 'SEC Filing',
+            'title': title,
+            'link': filing.get('linkToFilingDetails', filing.get('link', '')),
+            'content': content,
+            'published_date': filing.get('filedAt', ''),
+            'company': company_name,
+            'form_type': form_type,
+            'accession_no': filing.get('accessionNo', ''),
+            'cik': filing.get('cik', ''),
+            'content_enhanced': filing.get('content_enhanced', False),
+            'raw_data': filing  # Keep original data for reference
+        }
+        
+        return formatted_filing
+
     async def get_recent_filings(self, days_back: int = None, company_name: str = None) -> List[Dict[str, Any]]:
         """
         Fetches recent filings for all configured companies within a specified date range.
@@ -168,13 +201,13 @@ class SECExtractor:
                 form_type = filing.get('formType', '').upper()
                 if form_type in ['10-K', '10-Q']:
                     filtered_filings.append(filing)
-                    logger.info("✅ Keeping %s filing: %s", form_type, filing.get('title', 'Unknown'))
+                    logger.info("✅ Keeping %s filing: %s", form_type, filing.get('description', 'Unknown'))
                 elif form_type == '8-K':
-                    logger.info("⚠️  Filtering out 8-K filing: %s", filing.get('title', 'Unknown'))
+                    logger.info("⚠️  Filtering out 8-K filing: %s", filing.get('description', 'Unknown'))
                 else:
                     # Keep other form types (like 6-K, etc.) as fallback
                     filtered_filings.append(filing)
-                    logger.info("✅ Keeping %s filing: %s", form_type, filing.get('title', 'Unknown'))
+                    logger.info("✅ Keeping %s filing: %s", form_type, filing.get('description', 'Unknown'))
 
             # If no 10-K/10-Q filings found, include some 8-Ks as fallback
             if not filtered_filings:
@@ -183,7 +216,7 @@ class SECExtractor:
                     form_type = filing.get('formType', '').upper()
                     if form_type == '8-K':
                         filtered_filings.append(filing)
-                        logger.info("✅ Including 8-K filing as fallback: %s", filing.get('title', 'Unknown'))
+                        logger.info("✅ Including 8-K filing as fallback: %s", filing.get('description', 'Unknown'))
                         if len(filtered_filings) >= 3:  # Limit fallback 8-Ks to 3
                             break
 
@@ -224,10 +257,15 @@ class SECExtractor:
                         fail += 1
                     enhanced.append(filing)
                 logger.info(f"📊 Filing enhancement summary: {success} ok, {fail} failed, {len(filtered_filings)} total")
-                return enhanced
+                
+                # Format the enhanced filings into standard structure
+                formatted_filings = [self._format_sec_filing(filing) for filing in enhanced]
+                return formatted_filings
             else:
                 logger.warning("⚠️  ScraperAgent not available for SEC filings; sending plain results.")
-                return filtered_filings
+                # Format the plain filings into standard structure
+                formatted_filings = [self._format_sec_filing(filing) for filing in filtered_filings]
+                return formatted_filings
 
         except Exception as e:
             log_error(e, "Error fetching SEC filings")
