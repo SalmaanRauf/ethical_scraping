@@ -113,13 +113,15 @@ class SECExtractor:
             'title': title,
             'link': filing.get('linkToFilingDetails', filing.get('link', '')),
             'content': content,
+            'description': content,  # Add description field for analyst agent
             'published_date': filing.get('filedAt', ''),
             'company': company_name,
             'form_type': form_type,
             'accession_no': filing.get('accessionNo', ''),
             'cik': filing.get('cik', ''),
             'content_enhanced': filing.get('content_enhanced', False),
-            'raw_data': filing  # Keep original data for reference
+            'raw_data': filing,  # Keep original data for reference
+            'source_type': 'sec_filing'  # Explicitly set source type
         }
         
         return formatted_filing

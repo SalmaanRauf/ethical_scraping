@@ -296,10 +296,46 @@ class AnalystAgent:
         for item in events:
             raw_data = item.get('raw_data', {})
             
-            # Better company name extraction
+            # Better company name extraction - prioritize item.company over raw_data
             company = item.get('company', '')
             if not company and raw_data:
                 company = raw_data.get('company', raw_data.get('companyName', ''))
+            
+            # Debug: Print company extraction
+            print(f"[ANALYST][CONSOLIDATED] Item: '{item.get('title', '')[:60]}'")
+            print(f"[ANALYST][CONSOLIDATED] Company from item: '{item.get('company', 'N/A')}'")
+            print(f"[ANALYST][CONSOLIDATED] Company from raw_data: '{raw_data.get('company', 'N/A')}'")
+            print(f"[ANALYST][CONSOLIDATED] Final company: '{company}'")
+            
+            # Determine source type from the item
+            source = item.get('source', '').lower()
+            source_type = item.get('source_type', '')
+            
+            # Convert source types to proper display names
+            if not source_type:
+                if 'sec' in source or 'filing' in source:
+                    source_type = 'SEC Filing'
+                elif 'sam.gov' in source or 'procurement' in source:
+                    source_type = 'Procurement Notice'
+                elif 'news' in source or 'article' in source or 'gnews' in source or 'rss' in source:
+                    source_type = 'News Article'
+                elif 'bing' in source:
+                    source_type = 'Industry Research'
+                else:
+                    source_type = 'Unknown'
+            else:
+                # Convert raw source types to display names
+                if source_type == 'sec_filing':
+                    source_type = 'SEC Filing'
+                elif source_type == 'news':
+                    source_type = 'News Article'
+                elif source_type == 'bing_grounding':
+                    source_type = 'Industry Research'
+                elif source_type == 'procurement':
+                    source_type = 'Procurement Notice'
+            
+            print(f"[ANALYST][CONSOLIDATED] Source: '{item.get('source', 'N/A')}'")
+            print(f"[ANALYST][CONSOLIDATED] Source Type: '{source_type}'")
             
             adapted_item = {
                 'title': item.get('title', raw_data.get('title', '')),
@@ -308,24 +344,22 @@ class AnalystAgent:
                 'source': item.get('source_name', raw_data.get('source', '')),
                 'url': item.get('url', raw_data.get('link', '')),
                 'published_date': item.get('published_date', raw_data.get('date', '')),
-                'source_type': item.get('source_type', 'unknown'),
+                'source_type': source_type,  # Use the determined source type
                 'key_terms': item.get('key_terms', []),
                 'relevance_score': item.get('relevance_score', 0.0)
             }
-            source = adapted_item['source'].lower()
+            
+            # Set type based on source - FIXED: SEC filings should be treated as 'news' for financial analysis
             if 'sec' in source:
-                adapted_item['type'] = 'sec_filing'  # Changed from 'news' to 'sec_filing'
+                adapted_item['type'] = 'news'  # Changed from 'sec_filing' to 'news' for financial analysis
                 adapted_item['data_type'] = 'filing'
-                adapted_item['source_type'] = 'SEC Filing'  # Set explicit source type
             elif 'sam.gov' in source:
                 adapted_item['type'] = 'procurement'
-                adapted_item['source_type'] = 'Procurement Notice'  # Set explicit source type
             elif 'news' in source:
                 adapted_item['type'] = 'news'
-                adapted_item['source_type'] = 'News Article'  # Set explicit source type
             else:
                 adapted_item['type'] = 'unknown'
-                adapted_item['source_type'] = 'Unknown'  # Set explicit source type
+                
             if isinstance(raw_data, dict) and 'value_usd' in raw_data:
                 adapted_item['value_usd'] = raw_data['value_usd']
             if adapted_item['type'] == 'news':
@@ -429,7 +463,37 @@ class AnalystAgent:
                     # Use content field if available, otherwise fall back to description
                     text = str(item.get('content', item.get('description', ''))).strip()
                     scraped_label = "(SCRAPED)" if item.get('raw_data', {}).get('content_enhanced') else "(SUMMARY_ONLY)"
+                    source = item.get('source', '').lower()
+                    
                     print(f"[ANALYST][FINANCIAL] Processing: '{item.get('title', '')[:60]}' | Length: {len(text)} | {scraped_label}")
+                    
+                    # Special handling for SEC filings - always analyze them
+                    if 'sec' in source or 'filing' in source:
+                        print(f"[ANALYST][FINANCIAL] ✅ SEC filing detected - analyzing: '{item.get('title', '')[:60]}'")
+                        
+                        # Create a comprehensive financial analysis result for SEC filings
+                        form_type = item.get('form_type', 'SEC Filing')
+                        company = item.get('company', 'Unknown Company')
+                        
+                        financial_result = {
+                            'event_found': True,
+                            'event_type': 'Regulatory Filing',
+                            'description': f"{form_type} filed by {company}",
+                            'value_usd': None,  # SEC filings don't have monetary values
+                            'confidence': 'high',
+                            'what_happened': f"{company} filed {form_type} with the SEC",
+                            'why_it_matters': f"SEC filings provide critical financial and operational information about {company}",
+                            'consulting_angle': f"Opportunity to provide regulatory compliance and financial reporting advisory services",
+                            'need_type': 'regulatory',
+                            'service_line': 'Regulatory Advisory',
+                            'urgency': 'Medium'
+                        }
+                        
+                        item['financial_analysis'] = financial_result
+                        financial_events.append(item)
+                        print(f"[ANALYST][FINANCIAL] ✅ SEC filing added: '{item.get('title', '')[:60]}' ({form_type})")
+                        continue
+                    
                     if not text:
                         continue
                     if len(text) <= self.chunk_size:
@@ -500,52 +564,55 @@ class AnalystAgent:
             self.chunk_size = 3000
         
         for item in items:
-            # Process all items that passed triage, not just procurement category
-            if item.get('triage_result', {}).get('is_relevant', False):
-                try:
-                    # Use content field if available, otherwise fall back to description
-                    text = str(item.get('content', item.get('description', ''))).strip()
-                    scraped_label = "(SCRAPED)" if item.get('raw_data', {}).get('content_enhanced') else "(SUMMARY_ONLY)"
-                    print(f"[ANALYST][PROCUREMENT] Processing: '{item.get('title', '')[:60]}' | Length: {len(text)} | {scraped_label}")
-                    if not text:
-                        continue
-                    if len(text) <= self.chunk_size:
-                        result = await self._invoke_function_safely('procurement', text)
-                        if result is None:
-                            print(f"[ANALYST][PROCUREMENT] No result: '{item.get('title', '')[:60]}'")
+            # Only process items that are likely procurement-related
+            source = item.get('source', '').lower()
+            if 'sam.gov' in source or 'procurement' in source:
+                # Process all items that passed triage, not just procurement category
+                if item.get('triage_result', {}).get('is_relevant', False):
+                    try:
+                        # Use content field if available, otherwise fall back to description
+                        text = str(item.get('content', item.get('description', ''))).strip()
+                        scraped_label = "(SCRAPED)" if item.get('raw_data', {}).get('content_enhanced') else "(SUMMARY_ONLY)"
+                        print(f"[ANALYST][PROCUREMENT] Processing: '{item.get('title', '')[:60]}' | Length: {len(text)} | {scraped_label}")
+                        if not text:
                             continue
-                        procurement_result = self._safe_json_parse(result, "procurement_analysis")
-                        if procurement_result and procurement_result.get('is_relevant', False):
-                            value_usd = procurement_result.get('value_usd', 0)
-                            # Include all relevant procurement events, regardless of value
-                            item['procurement_analysis'] = procurement_result
-                            procurement_events.append(item)
-                            if value_usd and value_usd >= 10_000_000:
-                                print(f"[ANALYST][PROCUREMENT] Relevant procurement >=$10M: '{item.get('title', '')[:60]}' (${value_usd:,})")
-                            else:
-                                print(f"[ANALYST][PROCUREMENT] Relevant procurement: '{item.get('title', '')[:60]}' (value: ${value_usd:, if value_usd else 'N/A'})")
-                    else:
-                        chunks = self._create_intelligent_chunks(text)
-                        print(f"[ANALYST][PROCUREMENT] {len(chunks)} chunks for: '{item.get('title', '')[:60]}'")
-                        chunk_results = await self._analyze_chunks_with_map_reduce(chunks, 'procurement')
-                        if chunk_results:
-                            synthesized = chunk_results[0]
-                            if synthesized.get('is_relevant', False):
-                                value_usd = synthesized.get('value_usd', 0)
+                        if len(text) <= self.chunk_size:
+                            result = await self._invoke_function_safely('procurement', text)
+                            if result is None:
+                                print(f"[ANALYST][PROCUREMENT] No result: '{item.get('title', '')[:60]}'")
+                                continue
+                            procurement_result = self._safe_json_parse(result, "procurement_analysis")
+                            if procurement_result and procurement_result.get('is_relevant', False):
+                                value_usd = procurement_result.get('value_usd', 0)
                                 # Include all relevant procurement events, regardless of value
-                                item['procurement_analysis'] = synthesized
-                                item['analysis_metadata'] = {
-                                    'chunks_analyzed': len(chunks),
-                                    'analysis_method': 'map_reduce'
-                                }
+                                item['procurement_analysis'] = procurement_result
                                 procurement_events.append(item)
                                 if value_usd and value_usd >= 10_000_000:
-                                    print(f"[ANALYST][PROCUREMENT] Relevant procurement >=$10M (chunks): '{item.get('title', '')[:60]}' (${value_usd:,})")
+                                    print(f"[ANALYST][PROCUREMENT] Relevant procurement >=$10M: '{item.get('title', '')[:60]}' (${value_usd:,})")
                                 else:
-                                    print(f"[ANALYST][PROCUREMENT] Relevant procurement (chunks): '{item.get('title', '')[:60]}' (value: ${value_usd:, if value_usd else 'N/A'})")
-                except Exception as e:
-                    print(f"Error during procurement analysis: {e}")
-                    continue
+                                    print(f"[ANALYST][PROCUREMENT] Relevant procurement: '{item.get('title', '')[:60]}' (value: ${value_usd:, if value_usd else 'N/A'})")
+                        else:
+                            chunks = self._create_intelligent_chunks(text)
+                            print(f"[ANALYST][PROCUREMENT] {len(chunks)} chunks for: '{item.get('title', '')[:60]}'")
+                            chunk_results = await self._analyze_chunks_with_map_reduce(chunks, 'procurement')
+                            if chunk_results:
+                                synthesized = chunk_results[0]
+                                if synthesized.get('is_relevant', False):
+                                    value_usd = synthesized.get('value_usd', 0)
+                                    # Include all relevant procurement events, regardless of value
+                                    item['procurement_analysis'] = synthesized
+                                    item['analysis_metadata'] = {
+                                        'chunks_analyzed': len(chunks),
+                                        'analysis_method': 'map_reduce'
+                                    }
+                                    procurement_events.append(item)
+                                    if value_usd and value_usd >= 10_000_000:
+                                        print(f"[ANALYST][PROCUREMENT] Relevant procurement >=$10M (chunks): '{item.get('title', '')[:60]}' (${value_usd:,})")
+                                    else:
+                                        print(f"[ANALYST][PROCUREMENT] Relevant procurement (chunks): '{item.get('title', '')[:60]}' (value: ${value_usd:, if value_usd else 'N/A'})")
+                    except Exception as e:
+                        print(f"Error during procurement analysis: {e}")
+                        continue
         print(f"Procurement analysis complete: {len(procurement_events)} relevant notices found")
         return procurement_events
 
@@ -559,52 +626,56 @@ class AnalystAgent:
             self.chunk_size = 3000
         
         for item in items:
-            # Process all items that passed triage, not just earnings category
-            if item.get('triage_result', {}).get('is_relevant', False):
-                try:
-                    # Use content field if available, otherwise fall back to description
-                    text = str(item.get('content', item.get('description', ''))).strip()
-                    scraped_label = "(SCRAPED)" if item.get('raw_data', {}).get('content_enhanced') else "(SUMMARY_ONLY)"
-                    print(f"[ANALYST][EARNINGS] Processing: '{item.get('title', '')[:60]}' | Length: {len(text)} | {scraped_label}")
-                    if not text:
-                        continue
-                    if len(text) <= self.chunk_size:
-                        result = await self._invoke_function_safely('earnings', text)
-                        if result is None:
-                            print(f"[ANALYST][EARNINGS] No result: '{item.get('title', '')[:60]}'")
+            # Only process items that are likely earnings-related
+            source = item.get('source', '').lower()
+            title = item.get('title', '').lower()
+            if 'earnings' in title or 'quarterly' in title or 'annual' in title or '10-k' in title or '10-q' in title:
+                # Process all items that passed triage, not just earnings category
+                if item.get('triage_result', {}).get('is_relevant', False):
+                    try:
+                        # Use content field if available, otherwise fall back to description
+                        text = str(item.get('content', item.get('description', ''))).strip()
+                        scraped_label = "(SCRAPED)" if item.get('raw_data', {}).get('content_enhanced') else "(SUMMARY_ONLY)"
+                        print(f"[ANALYST][EARNINGS] Processing: '{item.get('title', '')[:60]}' | Length: {len(text)} | {scraped_label}")
+                        if not text:
                             continue
-                        earnings_result = self._safe_json_parse(result, "earnings_analysis")
-                        if earnings_result and earnings_result.get('guidance_found', False):
-                            value_usd = earnings_result.get('value_usd', 0)
-                            # Include all relevant earnings guidance, regardless of value
-                            item['earnings_analysis'] = earnings_result
-                            earnings_events.append(item)
-                            if value_usd and value_usd >= 10_000_000:
-                                print(f"[ANALYST][EARNINGS] Earnings guidance >=$10M: '{item.get('title', '')[:60]}' (${value_usd:,})")
-                            else:
-                                print(f"[ANALYST][EARNINGS] Earnings guidance: '{item.get('title', '')[:60]}' (value: ${value_usd:, if value_usd else 'N/A'})")
-                    else:
-                        chunks = self._create_intelligent_chunks(text)
-                        print(f"[ANALYST][EARNINGS] {len(chunks)} chunks for: '{item.get('title', '')[:60]}'")
-                        chunk_results = await self._analyze_chunks_with_map_reduce(chunks, 'earnings')
-                        if chunk_results:
-                            synthesized = chunk_results[0]
-                            if synthesized.get('guidance_found', False):
-                                value_usd = synthesized.get('value_usd', 0)
+                        if len(text) <= self.chunk_size:
+                            result = await self._invoke_function_safely('earnings', text)
+                            if result is None:
+                                print(f"[ANALYST][EARNINGS] No result: '{item.get('title', '')[:60]}'")
+                                continue
+                            earnings_result = self._safe_json_parse(result, "earnings_analysis")
+                            if earnings_result and earnings_result.get('guidance_found', False):
+                                value_usd = earnings_result.get('value_usd', 0)
                                 # Include all relevant earnings guidance, regardless of value
-                                item['earnings_analysis'] = synthesized
-                                item['analysis_metadata'] = {
-                                    'chunks_analyzed': len(chunks),
-                                    'analysis_method': 'map_reduce'
-                                }
+                                item['earnings_analysis'] = earnings_result
                                 earnings_events.append(item)
                                 if value_usd and value_usd >= 10_000_000:
-                                    print(f"[ANALYST][EARNINGS] Earnings guidance >=$10M (chunks): '{item.get('title', '')[:60]}' (${value_usd:,})")
+                                    print(f"[ANALYST][EARNINGS] Earnings guidance >=$10M: '{item.get('title', '')[:60]}' (${value_usd:,})")
                                 else:
-                                    print(f"[ANALYST][EARNINGS] Earnings guidance (chunks): '{item.get('title', '')[:60]}' (value: ${value_usd:, if value_usd else 'N/A'})")
-                except Exception as e:
-                    print(f"Error during earnings call analysis: {e}")
-                    continue
+                                    print(f"[ANALYST][EARNINGS] Earnings guidance: '{item.get('title', '')[:60]}' (value: ${value_usd:, if value_usd else 'N/A'})")
+                        else:
+                            chunks = self._create_intelligent_chunks(text)
+                            print(f"[ANALYST][EARNINGS] {len(chunks)} chunks for: '{item.get('title', '')[:60]}'")
+                            chunk_results = await self._analyze_chunks_with_map_reduce(chunks, 'earnings')
+                            if chunk_results:
+                                synthesized = chunk_results[0]
+                                if synthesized.get('guidance_found', False):
+                                    value_usd = synthesized.get('value_usd', 0)
+                                    # Include all relevant earnings guidance, regardless of value
+                                    item['earnings_analysis'] = synthesized
+                                    item['analysis_metadata'] = {
+                                        'chunks_analyzed': len(chunks),
+                                        'analysis_method': 'map_reduce'
+                                    }
+                                    earnings_events.append(item)
+                                    if value_usd and value_usd >= 10_000_000:
+                                        print(f"[ANALYST][EARNINGS] Earnings guidance >=$10M (chunks): '{item.get('title', '')[:60]}' (${value_usd:,})")
+                                    else:
+                                        print(f"[ANALYST][EARNINGS] Earnings guidance (chunks): '{item.get('title', '')[:60]}' (value: ${value_usd:, if value_usd else 'N/A'})")
+                    except Exception as e:
+                        print(f"Error during earnings call analysis: {e}")
+                        continue
         print(f"Earnings call analysis complete: {len(earnings_events)} guidance items found")
         return earnings_events
 
@@ -617,11 +688,18 @@ class AnalystAgent:
         for event in events:
             try:
                 company_profile = self.company_profiles.get(event.get('company', ''), {})
+                
+                # Debug: Print event details
+                print(f"[ANALYST][INSIGHT] Processing event: '{event.get('title', '')[:60]}'")
+                print(f"[ANALYST][INSIGHT] Company: '{event.get('company', 'N/A')}'")
+                print(f"[ANALYST][INSIGHT] Source Type: '{event.get('source_type', 'N/A')}'")
+                
                 insight_data = {
                     'company': event.get('company', ''),
                     'title': event.get('title', ''),
                     'source': event.get('source', ''),
                     'type': event.get('type', ''),
+                    'source_type': event.get('source_type', ''),  # Preserve source_type
                     'company_profile': company_profile,
                     'key_buyers': company_profile.get('key_buyers', []),
                     'projects': company_profile.get('projects', []),
@@ -635,11 +713,32 @@ class AnalystAgent:
                     insight_data.update(event['earnings_analysis'])
                 result = await self._invoke_function_safely('insight', json.dumps(insight_data))
                 if result is None:
+                    # Special handling for SEC filings - create fallback insights
+                    source = event.get('source', '').lower()
+                    if 'sec' in source or 'filing' in source:
+                        print(f"[ANALYST][INSIGHT] ✅ Creating fallback insights for SEC filing: '{event.get('title', '')[:60]}'")
+                        fallback_insights = {
+                            'what_happened': f"{event.get('company', 'Company')} filed {event.get('form_type', 'SEC Filing')}",
+                            'why_it_matters': f"SEC filings provide critical financial and operational information",
+                            'consulting_angle': f"Opportunity to provide regulatory compliance and financial reporting advisory services",
+                            'need_type': 'regulatory',
+                            'service_line': 'Regulatory Advisory',
+                            'urgency': 'Medium'
+                        }
+                        event['insights'] = fallback_insights
+                        insights.append(event)
+                        print(f"[ANALYST][INSIGHT] ✅ Added SEC filing with fallback insights")
+                    else:
+                        print(f"Warning: Could not generate insight for event: {event.get('title', 'Unknown')}")
                     continue
                 insight_result = self._safe_json_parse(result, "insight_generation")
                 if insight_result:
                     event['insights'] = insight_result
+                    # Ensure source_type is preserved in the final event
+                    if 'source_type' not in event:
+                        event['source_type'] = event.get('source_type', '')
                     insights.append(event)
+                    print(f"[ANALYST][INSIGHT] ✅ Added event with company: '{event.get('company', 'N/A')}' and source_type: '{event.get('source_type', 'N/A')}'")
                 else:
                     print(f"Warning: Could not parse insight for event: {event.get('title', 'Unknown')}")
             except Exception as e:
