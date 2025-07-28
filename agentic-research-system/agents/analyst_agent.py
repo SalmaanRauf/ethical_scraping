@@ -342,10 +342,27 @@ class AnalystAgent:
                 # Use content field if available, otherwise fall back to description
                 text = str(item.get('content', item.get('description', ''))).strip()
                 scraped_label = "(SCRAPED)" if item.get('raw_data', {}).get('content_enhanced') else "(SUMMARY_ONLY)"
+                source = item.get('source', '').lower()
+                
                 print(f"[ANALYST][TRIAGE] Input: '{item.get('title', 'NO TITLE')[:60]}' | Length: {len(text)} | {scraped_label}")
+                
+                # HIGH PRIORITY: SEC filings always pass through triage
+                if 'sec' in source or 'filing' in source or '10-k' in text.lower() or '10-q' in text.lower() or '11-k' in text.lower():
+                    print(f"[ANALYST][TRIAGE] ✅ SEC filing detected - auto-passing: '{item.get('title', 'NO TITLE')[:60]}'")
+                    item['triage_result'] = {
+                        'category': 'SEC Filing',
+                        'is_relevant': True,
+                        'reasoning': 'SEC filing automatically passed through triage',
+                        'confidence': 'high',
+                        'routing_hint': 'SEC filing'
+                    }
+                    relevant_items.append(item)
+                    continue
+                
                 if not text:
                     print(f"[ANALYST][TRIAGE] Skipping empty content: {item.get('title', 'NO TITLE')[:60]}")
                     continue
+                    
                 if len(text) <= self.chunk_size:
                     result = await self._invoke_function_safely('triage', text)
                     if result is None:

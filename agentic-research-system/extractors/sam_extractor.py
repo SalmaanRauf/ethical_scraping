@@ -1,5 +1,6 @@
 import asyncio
 import re
+import time
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import logging
@@ -30,12 +31,29 @@ class SAMExtractor:
         # Use lazy loading instead of loading profiles in constructor
         self._company_profiles = None
 
-        # API quota management
+        # API quota management with rate limiting
         self.api_calls_made = 0
-        self.max_api_calls = 5 # Max 5 API calls as per requirement
+        self.max_api_calls = 3  # Reduced from 5 to 3 to stay under daily limit
+        self.last_api_call = 0
+        self.min_call_interval = 2  # Minimum 2 seconds between API calls
         
+        # Financial institution specific keywords for better filtering
+        self.financial_keywords = [
+            "financial", "banking", "credit", "lending", "mortgage", "insurance",
+            "investment", "securities", "compliance", "regulatory", "audit",
+            "risk management", "cybersecurity", "data security", "fraud",
+            "anti-money laundering", "aml", "kyc", "know your customer",
+            "banking software", "financial technology", "fintech",
+            "core banking", "payment processing", "card processing",
+            "loan servicing", "mortgage servicing", "credit card",
+            "debit card", "atm", "online banking", "mobile banking",
+            "digital banking", "wealth management", "asset management",
+            "trust services", "custody", "clearing", "settlement"
+        ]
+
         logger.info("🔍 SAMExtractor initialized")
         logger.info("🔑 SAM API key configured: %s", "Yes" if self.api_key else "No")
+        logger.info("⏱️  Rate limiting: %d calls max, %d seconds between calls", self.max_api_calls, self.min_call_interval)
 
     @property
     def company_profiles(self):
@@ -88,6 +106,14 @@ class SAMExtractor:
             logger.error("❌ SAM.gov API quota limit reached (%d/%d)", self.api_calls_made, self.max_api_calls)
             return []
 
+        # Rate limiting: ensure minimum time between API calls
+        current_time = time.time()
+        time_since_last_call = current_time - self.last_api_call
+        if time_since_last_call < self.min_call_interval:
+            sleep_time = self.min_call_interval - time_since_last_call
+            logger.info(f"⏱️  Rate limiting: waiting {sleep_time:.1f} seconds before API call")
+            await asyncio.sleep(sleep_time)
+
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days_back)
 
@@ -96,18 +122,24 @@ class SAMExtractor:
         yesterday = (start_date).strftime('%m/%d/%Y')
         today = end_date.strftime('%m/%d/%Y')
         
+        # Add financial keywords to the search to get more relevant results
+        financial_keyword_query = " OR ".join([f'"{k}"' for k in self.financial_keywords[:10]])  # Limit to first 10 keywords
+        
         params = {
             'api_key': self.api_key,
             'postedFrom': yesterday,
             'postedTo': today,
             'limit': 10,
             'sortBy': 'postedDate',
-            'order': 'desc'
+            'order': 'desc',
+            'keyword': financial_keyword_query  # Add financial keywords to search
         }
         
         logger.info("🔍 SAM API request: %s", self.base_url)
+        logger.info("🔍 Financial keywords in search: %s", financial_keyword_query)
         
         try:
+            self.last_api_call = time.time()  # Record the API call time
             response = await safe_async_get(self.base_url, params=params)
             if not response:
                 logger.error("❌ No response from SAM.gov API")
@@ -224,6 +256,7 @@ class SAMExtractor:
     def _apply_business_filters(self, notices: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Applies business logic filters: USD value extraction ($10M+) and company matching.
+        Now with much stricter filtering for financial institution relevance.
         """
         filtered_notices = []
         for notice in notices:
@@ -237,13 +270,41 @@ class SAMExtractor:
                     company_mentioned = True
                     break
             
-            # Check for keyword mention
+            # Check for financial keywords (much stricter now)
+            financial_keyword_mentioned = any(keyword.lower() in full_text.lower() for keyword in self.financial_keywords)
+            
+            # Check for general keywords
             keyword_mentioned = any(keyword.lower() in full_text.lower() for keyword in self.keywords)
 
-            # Apply the old logic: Only keep notice if about our target companies AND (keyword OR value_usd >= $10M+)
-            if company_mentioned and (keyword_mentioned or (value_usd is not None and value_usd >= 10_000_000)):
+            # MUCH STRICTER FILTERING: Only keep notices that are clearly relevant to financial institutions
+            is_relevant = False
+            
+            # Case 1: Company mentioned AND (financial keyword OR high value)
+            if company_mentioned and (financial_keyword_mentioned or (value_usd is not None and value_usd >= 10_000_000)):
+                is_relevant = True
+                logger.info(f"✅ SAM notice relevant: Company mentioned + (financial keyword OR high value): {notice.get('title', 'Unknown')}")
+            
+            # Case 2: High value ($50M+) even without company mention
+            elif value_usd is not None and value_usd >= 50_000_000:
+                is_relevant = True
+                logger.info(f"✅ SAM notice relevant: High value (${value_usd:,}): {notice.get('title', 'Unknown')}")
+            
+            # Case 3: Strong financial keyword match (multiple keywords)
+            elif financial_keyword_mentioned:
+                # Count how many financial keywords are present
+                financial_keyword_count = sum(1 for keyword in self.financial_keywords if keyword.lower() in full_text.lower())
+                if financial_keyword_count >= 2:  # Require at least 2 financial keywords
+                    is_relevant = True
+                    logger.info(f"✅ SAM notice relevant: Multiple financial keywords ({financial_keyword_count}): {notice.get('title', 'Unknown')}")
+            
+            if is_relevant:
                 notice['value_usd'] = value_usd
+                notice['financial_keyword_count'] = sum(1 for keyword in self.financial_keywords if keyword.lower() in full_text.lower())
                 filtered_notices.append(notice)
+            else:
+                logger.info(f"❌ SAM notice filtered out: {notice.get('title', 'Unknown')} (not relevant to financial institutions)")
+        
+        logger.info(f"📊 SAM filtering: {len(notices)} total notices, {len(filtered_notices)} relevant to financial institutions")
         return filtered_notices
 
     def _extract_value_usd(self, text: str) -> Optional[int]:

@@ -81,9 +81,15 @@ class DataConsolidator:
 
         # Process each item with relevance scoring
         processed_items = []
-        for item in raw_data:
+        for i, item in enumerate(raw_data):
             relevance_score = self._calculate_relevance_score(item)
             item['relevance_score'] = relevance_score
+            
+            # Log each item's relevance score for debugging
+            source = item.get('source', 'Unknown')
+            title = item.get('title', 'No Title')[:60]
+            logger.info(f"📊 Item {i+1}: {source} - '{title}' - Relevance: {relevance_score:.2f}")
+            
             processed_items.append(item)
 
         logger.info("📊 Relevance scoring complete for %d items", len(processed_items))
@@ -98,28 +104,20 @@ class DataConsolidator:
 
         # Filter out items with low relevance (can be adjusted)
         relevant_items = [item for item in processed_items if item['relevance_score'] > 0.0]  # Keep all items with any relevance
-        relevant_items.sort(key=lambda x: x['relevance_score'], reverse=True)
         
-        logger.info("✅ Consolidated %d relevant items (%.1f%% of original)", 
-                   len(relevant_items), (len(relevant_items) / len(raw_data) * 100) if raw_data else 0)
-
-        # Save consolidated data
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = self.output_dir / f"consolidated_{timestamp}.json"
+        logger.info("✅ Consolidated %d relevant items (filtered from %d total)", len(relevant_items), len(processed_items))
         
-        try:
-            with open(output_file, 'w') as f:
-                json.dump(relevant_items, f, indent=2, default=str)
-            logger.info("💾 Consolidated data saved to: %s", output_file)
-        except Exception as e:
-            log_error(e, f"Failed to save consolidated data to {output_file}")
-
+        # Add source type classification
+        for item in relevant_items:
+            item['source_type'] = self._determine_source_type(item)
+            item['key_terms'] = self._extract_key_terms(item)
+        
         return relevant_items
 
     def _calculate_relevance_score(self, item: Dict[str, Any]) -> float:
         """
         Calculate a relevance score based on company mentions and high-impact keywords.
-        Re-integrated from old implementation with more relaxed filtering.
+        SEC filings are given high priority and always pass through.
         """
         score = 0.0
 
@@ -127,8 +125,15 @@ class DataConsolidator:
         title = item.get('title', '').lower()
         description = item.get('description', '').lower()
         content = item.get('content', '').lower()
+        source = item.get('source', '').lower()
 
         all_text = f"{title} {description} {content}"
+
+        # HIGH PRIORITY: SEC filings always get high relevance
+        if 'sec' in source or 'filing' in source or '10-k' in all_text or '10-q' in all_text or '11-k' in all_text:
+            score = 1.0  # Maximum relevance for SEC filings
+            logger.info(f"✅ SEC filing detected - giving maximum relevance score: {item.get('title', 'Unknown')}")
+            return score
 
         # Check for target company mentions - very flexible matching
         company_mentioned = False
