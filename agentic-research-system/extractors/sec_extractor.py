@@ -148,8 +148,8 @@ class SECExtractor:
 
             logger.info("📄 SEC API returned %d filings", len(filings))
 
-            # Limit to max_per_company filings per company (from old implementation)
-            max_per_company = 3
+            # Get more filings initially, then filter by form type
+            max_per_company = 15  # Increased from 3 to get more filings
             company_counts = {}
             limited_filings = []
             for filing in filings:
@@ -162,18 +162,45 @@ class SECExtractor:
 
             logger.info("✅ Limited to %d filings (%d companies)", len(limited_filings), len(company_counts))
 
+            # Filter out 8-Ks and prioritize 10-K/10-Q filings
+            filtered_filings = []
+            for filing in limited_filings:
+                form_type = filing.get('formType', '').upper()
+                if form_type in ['10-K', '10-Q']:
+                    filtered_filings.append(filing)
+                    logger.info("✅ Keeping %s filing: %s", form_type, filing.get('title', 'Unknown'))
+                elif form_type == '8-K':
+                    logger.info("⚠️  Filtering out 8-K filing: %s", filing.get('title', 'Unknown'))
+                else:
+                    # Keep other form types (like 6-K, etc.) as fallback
+                    filtered_filings.append(filing)
+                    logger.info("✅ Keeping %s filing: %s", form_type, filing.get('title', 'Unknown'))
+
+            # If no 10-K/10-Q filings found, include some 8-Ks as fallback
+            if not filtered_filings:
+                logger.warning("⚠️  No 10-K/10-Q filings found, including 8-Ks as fallback")
+                for filing in limited_filings:
+                    form_type = filing.get('formType', '').upper()
+                    if form_type == '8-K':
+                        filtered_filings.append(filing)
+                        logger.info("✅ Including 8-K filing as fallback: %s", filing.get('title', 'Unknown'))
+                        if len(filtered_filings) >= 3:  # Limit fallback 8-Ks to 3
+                            break
+
+            logger.info("✅ Filtered to %d relevant filings (10-K/10-Q prioritized)", len(filtered_filings))
+
             # Enhance all found filings with full content
             if self.scraper_agent and hasattr(self.scraper_agent, 'is_available') and self.scraper_agent.is_available():
                 logger.info("🕷️  Enhancing filings with extracted full context via ScraperAgent...")
                 enhanced = []
                 success = 0
                 fail = 0
-                for idx, filing in enumerate(limited_filings):
+                for idx, filing in enumerate(filtered_filings):
                     url = filing.get('linkToFilingDetails') or filing.get('link') or filing.get('url')
                     title = filing.get('companyName', 'No Title')[:70]
                     if url:
                         try:
-                            logger.info(f"➡️ [{idx+1}/{len(limited_filings)}] Scraping SEC filing: {title}\n    URL: {url}")
+                            logger.info(f"➡️ [{idx+1}/{len(filtered_filings)}] Scraping SEC filing: {title}\n    URL: {url}")
                             full_content = await self.scraper_agent.scrape_url(url, "sec_filing")
                             if full_content:
                                 filing['full_content'] = full_content
@@ -196,11 +223,11 @@ class SECExtractor:
                         logger.warning(f"⚠️  SEC filing missing URL: '{title}'")
                         fail += 1
                     enhanced.append(filing)
-                logger.info(f"📊 Filing enhancement summary: {success} ok, {fail} failed, {len(limited_filings)} total")
+                logger.info(f"📊 Filing enhancement summary: {success} ok, {fail} failed, {len(filtered_filings)} total")
                 return enhanced
             else:
                 logger.warning("⚠️  ScraperAgent not available for SEC filings; sending plain results.")
-                return limited_filings
+                return filtered_filings
 
         except Exception as e:
             log_error(e, "Error fetching SEC filings")

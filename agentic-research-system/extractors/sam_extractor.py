@@ -92,12 +92,17 @@ class SAMExtractor:
         start_date = end_date - timedelta(days=days_back)
 
         # More conservative parameters to avoid 400 errors
+        # Use date format from original version: MM/DD/YYYY
+        yesterday = (start_date).strftime('%m/%d/%Y')
+        today = end_date.strftime('%m/%d/%Y')
+        
         params = {
             'api_key': self.api_key,
-            'limit': 10,  # Reduced from 25 to be more conservative
-            'sortBy': 'modifiedDate',  # Changed from -modifiedDate to avoid potential issues
-            'postedFrom': start_date.strftime('%Y-%m-%d'),
-            'postedTo': end_date.strftime('%Y-%m-%d'),
+            'postedFrom': yesterday,
+            'postedTo': today,
+            'limit': 10,
+            'sortBy': 'postedDate',
+            'order': 'desc'
         }
         
         logger.info("🔍 SAM API request: %s", self.base_url)
