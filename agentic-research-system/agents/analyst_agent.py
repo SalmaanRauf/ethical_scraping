@@ -500,7 +500,8 @@ class AnalystAgent:
             self.chunk_size = 3000
         
         for item in items:
-            if item.get('triage_result', {}).get('category') == 'Procurement Notice':
+            # Process all items that passed triage, not just procurement category
+            if item.get('triage_result', {}).get('is_relevant', False):
                 try:
                     # Use content field if available, otherwise fall back to description
                     text = str(item.get('content', item.get('description', ''))).strip()
@@ -558,7 +559,8 @@ class AnalystAgent:
             self.chunk_size = 3000
         
         for item in items:
-            if item.get('triage_result', {}).get('category') == 'Earnings Call':
+            # Process all items that passed triage, not just earnings category
+            if item.get('triage_result', {}).get('is_relevant', False):
                 try:
                     # Use content field if available, otherwise fall back to description
                     text = str(item.get('content', item.get('description', ''))).strip()
@@ -667,22 +669,12 @@ class AnalystAgent:
         print(f"Starting analysis of {len(data_items)} data items...")
         relevant_items = await self.triage_data(data_items)
         
-        # Separate items by type for specialized analysis
-        sec_filings = [item for item in relevant_items if item.get('type') == 'sec_filing']
-        news_items = [item for item in relevant_items if item.get('type') == 'news']
-        procurement_items = [item for item in relevant_items if item.get('type') == 'procurement']
+        # Analyze all relevant items together (original logic)
+        financial_events = await self.analyze_financial_events(relevant_items)
+        procurement_events = await self.analyze_procurement(relevant_items)
+        earnings_events = await self.analyze_earnings_calls(relevant_items)
         
-        print(f"📊 Analysis breakdown: {len(sec_filings)} SEC filings, {len(news_items)} news items, {len(procurement_items)} procurement items")
-        
-        # Analyze each type separately
-        financial_events = await self.analyze_financial_events(news_items)
-        procurement_events = await self.analyze_procurement(procurement_items)
-        earnings_events = await self.analyze_earnings_calls(news_items)
-        
-        # SEC filings get special treatment - analyze them as financial events
-        sec_events = await self.analyze_financial_events(sec_filings)
-        
-        all_events = financial_events + procurement_events + earnings_events + sec_events
+        all_events = financial_events + procurement_events + earnings_events
         final_insights = await self.generate_insights(all_events)
         print(f"Analysis complete: {len(final_insights)} high-impact events identified")
         return final_insights
