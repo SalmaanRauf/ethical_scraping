@@ -1,20 +1,20 @@
 """
-Bing Grounding (GWBS) Research Agent — URL-safe, deterministic, annotation-driven.
+Grounding with Bing Search Tool Research Agent — annotation-driven, no scraping, SDK-safe.
 
-Key changes vs. your original:
-- Deterministic generation (temperature=0.0) to reduce fabricated specifics.
-- STRICT: never trust body text links. We ignore any inline URLs the model writes.
-- We ONLY surface URLs from GWBS citation annotations (url_citation_annotations).
-- If citations are missing or too few, we run ONE corrective follow-up asking GWBS to re-search and attach live citations.
-- No web scraping / no direct HTTP validation — we rely solely on GWBS to discover and cite sources.
-- Cleaner separation of concerns + better error handling + light auditing of Bing queries via run steps (if available).
+What this does:
+- Uses the Grounding with Bing Search tool for discovery and understanding of sources.
+- Never trusts inline URLs in model prose; only uses the tool's citation annotations for links.
+- If citations are empty, performs ONE corrective follow-up asking the model to re-search and attach citations.
+- No web scraping or direct HTTP validation.
+- Avoids SDK parameters that caused errors (e.g., 'parallel_tool_calls', 'temperature').
 
-NOTE: GWBS does not expose raw page content to your app; you must rely on citations returned by the tool.
+If you later upgrade the azure.ai.agents SDK and want to set model parameters,
+add them carefully with a try/except TypeError around create_agent.
 """
 
 import os
-from typing import Dict, Any, Optional, Tuple, List
 import re
+from typing import Any, Dict, List, Optional, Tuple
 
 from azure.ai.projects import AIProjectClient
 from azure.ai.agents.models import MessageRole, BingGroundingTool
@@ -27,36 +27,38 @@ def _cond_load_dotenv() -> None:
         from dotenv import load_dotenv  # type: ignore
         load_dotenv()
     except ImportError:
-        # It's fine if dotenv isn't installed.
         pass
 
 
 class BingDataExtractionAgent:
     """
-    A deterministic, grounding-first research agent that relies exclusively on
-    GWBS citation annotations for source URLs and NEVER trusts inline links in the model's prose.
+    Research agent that relies exclusively on the Grounding with Bing Search tool:
+    - Citations (URL + title) are extracted only from the tool's citation annotations.
+    - Inline URLs in the model body are stripped and never trusted.
+    - One corrective follow-up is attempted if no citations are returned.
     """
 
-    # System prompt with strict rules that align with our runtime enforcement.
     SYSTEM_PROMPT = (
-        "You are **ResearchAgentPRO**. Use **Grounding with Bing Search (GWBS)** to produce source-first, "
-        "fact-checked research.\n\n"
-        "NON-NEGOTIABLES:\n"
-        "1) Search First (and verify via GWBS): Run GWBS to discover and select sources. Prefer primary/official sources "
-        "   (issuer IR, SEC EDGAR, US regulators) and tier-1 wires (Reuters/Bloomberg/AP/WSJ) when available, but you may use "
-        "   any reputable source discovered by GWBS. Use freshness appropriately.\n"
-        "2) Absolutely **do not** invent URLs. If you cannot find a source, say so briefly and try another search.\n"
-        "3) Provide **sources only via citations/annotations**. Do not place raw URLs in your narrative/body text.\n"
-        "4) When citing SEC filings, prefer the EDGAR filing index/IXBRL page that directly corresponds to the filing.\n"
-        "5) If citations are missing or low-confidence, run another search before responding.\n\n"
-        "OUTPUT STYLE:\n"
-        "• Be concise and bullet-first. Use the requested output schema if provided by the user prompt.\n"
-        "• No raw URLs in the body. The system will attach your citations automatically from annotations.\n"
+        "You are an intelligent AI agent skilled at using the **Grounding with Bing Search tool** to discover, "
+        "understand, and cite reputable web information for the user's question.\n\n"
+        "Follow this process:\n"
+        "Step 1 — Understand Intent:\n"
+        "• Carefully analyze the user's question to capture the key facts required.\n\n"
+        "Step 2 — Search & Compile (via the Grounding with Bing Search tool):\n"
+        "• Use the tool to perform web search and retrieve information.\n"
+        "• Prefer primary/official sources (issuer investor relations sites, SEC EDGAR, U.S. regulators) and tier-1 wires "
+        "  (Reuters, Bloomberg, AP, WSJ) when available, but you may use any reputable sources discovered by the tool.\n"
+        "• Compile findings into a structured, concise summary with clear bullets and/or short paragraphs.\n"
+        "• IMPORTANT: Provide **sources only via the tool’s citation annotations**. Do NOT place raw URLs in your body text.\n"
+        "• When citing SEC filings, reference the specific filing page discovered via the tool (e.g., filing index/IXBRL), "
+        "  not guessed or constructed links.\n\n"
+        "Step 3 — Coverage Check:\n"
+        "• If information is insufficient to confidently answer, perform additional searches using the tool and update findings.\n\n"
+        "Step 4 — Output Formatting:\n"
+        "• Present a clear, organized answer. Use headings where appropriate. Keep the writing concise and factual.\n"
+        "• No raw URLs in the body; citations will be attached by the system from your tool annotations.\n"
         "• If nothing qualifies, output: **“No material updates.”**"
     )
-
-    # You can keep your previous long schema-driven instruction here if you want.
-    # Keeping it short makes reuse easier; task prompts below add per-task specifics.
 
     def __init__(
         self,
@@ -72,8 +74,9 @@ class BingDataExtractionAgent:
         self.credential = credential or DefaultAzureCredential()
 
         if not all([self.project_endpoint, self.model_deployment_name, self.azure_bing_connection_id]):
-            raise ValueError("Missing required Azure Bing env variables! "
-                             "Ensure PROJECT_ENDPOINT, MODEL_DEPLOYMENT_NAME, AZURE_BING_CONNECTION_ID are set.")
+            raise ValueError(
+                "Missing required Azure variables. Set PROJECT_ENDPOINT, MODEL_DEPLOYMENT_NAME, AZURE_BING_CONNECTION_ID."
+            )
 
     # -----------------------
     # Internal helper methods
@@ -81,8 +84,8 @@ class BingDataExtractionAgent:
 
     def _create_agent(self, agents_client):
         """
-        Create an ephemeral agent configured for Bing Grounding.
-        Critical: temperature=0.0 to suppress creative fabrication of specifics like date-stamped URL slugs.
+        Create an ephemeral agent configured with the Grounding with Bing Search tool.
+        NOTE: We do NOT pass unsupported kwargs (e.g., 'parallel_tool_calls', 'temperature').
         """
         bing_tool = BingGroundingTool(connection_id=self.azure_bing_connection_id)
         agent = agents_client.create_agent(
@@ -90,16 +93,12 @@ class BingDataExtractionAgent:
             name="bing-data-extraction-session",
             instructions=self.SYSTEM_PROMPT,
             tools=bing_tool.definitions,
-            temperature=0.0,           # Key control to reduce hallucinated specifics
-            parallel_tool_calls=False  # Optional: simpler traces
         )
         return agent
 
     @staticmethod
     def _strip_inline_urls(text: str) -> str:
-        """
-        Remove any inline raw URLs from the body text (we do not trust them).
-        """
+        """Remove any inline raw URLs from the body text (we do not trust them)."""
         if not text:
             return text
         return re.sub(r"https?://\S+", "[link omitted]", text)
@@ -124,17 +123,16 @@ class BingDataExtractionAgent:
     @staticmethod
     def _extract_citations(msg) -> List[Dict[str, str]]:
         """
-        Pull GWBS citation annotations. This is the ONLY place we source URLs from.
+        Pull citation annotations from the Grounding with Bing Search tool.
+        This is the ONLY place we source URLs from.
         """
         cites: List[Dict[str, str]] = []
         for ann in getattr(msg, "url_citation_annotations", []) or []:
             try:
                 url = ann.url_citation.url
                 title = ann.url_citation.title or url
-                if url:
-                    # basic sanity (no http fetch; not web scraping)
-                    if url.lower().startswith(("http://", "https://")):
-                        cites.append({"title": title, "url": url})
+                if url and url.lower().startswith(("http://", "https://")):
+                    cites.append({"title": title, "url": url})
             except Exception:
                 continue
         return cites
@@ -149,8 +147,8 @@ class BingDataExtractionAgent:
 
     def _log_run_steps_bing_queries(self, agents_client, thread_id: str, run_id: str) -> List[str]:
         """
-        Optional audit hook: list run steps and harvest any recorded Bing query strings.
-        (No external HTTP; this is just metadata from the Agents service.)
+        Optional audit hook: list run steps and harvest any recorded search query strings
+        from the Grounding with Bing Search tool calls (shape can vary; best-effort).
         """
         queries: List[str] = []
         try:
@@ -158,20 +156,20 @@ class BingDataExtractionAgent:
             for s in steps:
                 tcalls = getattr(s, "tool_calls", None) or []
                 for tc in tcalls:
-                    # Defensive: look for tool call structures that may show a query
-                    # Exact shape can vary; we capture stringy params for audit only.
                     for attr in ("query", "parameters", "args", "arguments"):
                         val = getattr(tc, attr, None)
                         if val:
                             queries.append(str(val))
         except Exception:
-            # If step listing isn't available, silently continue.
             pass
         return queries
 
     def _run_once(self, agents_client, agent, user_prompt: str) -> Tuple[str, List[Dict[str, str]], List[str]]:
         """
-        Single run: post the user prompt, process, return (body_text, citations, bing_queries).
+        Single run:
+        - Post the user prompt
+        - Process
+        - Return (body_text, citations_from_annotations, search_queries_audit)
         """
         thread = agents_client.threads.create()
         agents_client.messages.create(
@@ -180,10 +178,10 @@ class BingDataExtractionAgent:
             content=user_prompt,
         )
 
-        print("Processing Bing grounding search, this may take up to 30 seconds...")
+        print("Processing with the Grounding with Bing Search tool; this may take up to ~30s...")
         run = agents_client.runs.create_and_process(thread_id=thread.id, agent_id=agent.id)
         if run.status == "failed":
-            raise RuntimeError(f"Bing grounding run failed: {run.last_error}")
+            raise RuntimeError(f"Run failed: {run.last_error}")
 
         msg = agents_client.messages.get_last_message_by_role(thread_id=thread.id, role=MessageRole.AGENT)
         if not msg:
@@ -198,9 +196,9 @@ class BingDataExtractionAgent:
     def _run_agent_task(self, user_prompt: str) -> Dict[str, Any]:
         """
         Core runner:
-        - Create ephemeral agent (temperature=0.0).
-        - Run once and collect citations from GWBS annotations.
-        - If citations are empty or suspiciously low, run ONE corrective pass asking for proper citations.
+        - Create ephemeral agent.
+        - Run once and collect citation annotations.
+        - If citations are empty, run ONE corrective pass asking the model to re-search and attach citations.
         - Return summary text (without inline URLs) + citations_md + audit of queries.
         """
         with AIProjectClient(endpoint=self.project_endpoint, credential=self.credential) as project_client:
@@ -212,19 +210,19 @@ class BingDataExtractionAgent:
                 body, cites, queries = self._run_once(agents_client, agent, user_prompt)
 
                 # If we got zero citations, ask for a corrective pass.
-                # (We don't fetch anything ourselves; we rely on GWBS to re-search and attach citations.)
                 if not cites:
                     follow_up = (
                         user_prompt
                         + "\n\nFOLLOW-UP:\n"
-                          "Citations were missing or incomplete. Re-run the search and include only live, specific citations "
-                          "from GWBS annotations to support each claim. Do not add raw URLs to the body."
+                          "Citations were missing or incomplete. Re-run the search using the Grounding with Bing Search tool "
+                          "and include live, specific citations via annotations for each major claim. "
+                          "Do not place raw URLs in the body."
                     )
-                    body, cites2, queries2 = self._run_once(agents_client, agent, follow_up)
-                    cites = cites2 or cites
+                    body2, cites2, queries2 = self._run_once(agents_client, agent, follow_up)
+                    if cites2:
+                        body, cites = body2, cites2
                     queries.extend(queries2 or [])
 
-                # Build markdown list from citations only (no inline URLs from body)
                 bullets = self._citations_to_markdown(cites)
 
             finally:
@@ -238,7 +236,7 @@ class BingDataExtractionAgent:
             "summary": body.strip(),
             "citations_md": bullets.strip(),
             "audit": {
-                "bing_queries": queries,
+                "search_queries": queries,
                 "citation_count": len(cites),
             },
         }
@@ -249,46 +247,48 @@ class BingDataExtractionAgent:
 
     def search_sec_filings(self, company: str) -> Dict[str, Any]:
         """
-        Ask for 2025+ SEC filings and findings. We instruct the model to use GWBS to find
-        the exact filing pages (index/IXBRL) and to summarize key items/sections.
+        Ask for 2025+ SEC filings and findings.
+        IMPORTANT: the model must use the Grounding with Bing Search tool to locate the specific filing pages
+        and summarize key sections (e.g., Risk Factors, MD&A, 8-K Items). We never guess or construct links.
         """
         query = (
             f"TASK: SEC filings and key findings for {company}. "
-            "Focus on 2025+ 10-K/10-Q/8-K and highlight material items (e.g., Risk Factors, MD&A, specific 8-K Items). "
-            "Prefer EDGAR filing index/IXBRL pages. Provide concise bullets per finding. "
-            "Remember: sources only via citations/annotations; do not include raw URLs in body."
+            "Focus on 2025+ 10-K, 10-Q, and 8-K; highlight material items (Risk Factors, MD&A, specific 8-K Items). "
+            "Use the Grounding with Bing Search tool to discover the specific filing pages (filing index/IXBRL) and "
+            "summarize the relevant content. Provide concise bullets per finding. "
+            "Do NOT place raw URLs in your body; provide sources only via citation annotations."
         )
         return self._run_agent_task(query)
 
     def search_news(self, company: str) -> Dict[str, Any]:
         query = (
             f"TASK: 2025+ impactful news for {company} (regulatory, financial, M&A, risk). "
-            "Use GWBS with freshness. Provide 2+ citations per major claim when available. "
-            "No raw URLs in body; citations only via annotations."
+            "Use the Grounding with Bing Search tool with appropriate freshness. Provide multiple citations for major claims "
+            "when available. No raw URLs in body; sources only via citation annotations."
         )
         return self._run_agent_task(query)
 
     def search_procurement(self, company: str) -> Dict[str, Any]:
         query = (
             f"TASK: U.S. Government procurement context for {company}. "
-            "Use GWBS to find notable SAM.gov notices or official releases; if none are visible via GWBS, say so briefly. "
-            "No raw URLs in body; citations only via annotations."
+            "Use the Grounding with Bing Search tool to find notable government notices or official releases; "
+            "if none are visible, say so briefly. No raw URLs in body; sources only via citation annotations."
         )
         return self._run_agent_task(query)
 
     def search_earnings(self, company: str) -> Dict[str, Any]:
         query = (
             f"TASK: Earnings for {company} (transcripts, releases, guidance). "
-            "Prefer issuer IR and SEC filings surfaced by GWBS. Summarize key deltas and guidance clearly. "
-            "No raw URLs in body; citations only via annotations."
+            "Prefer issuer investor relations and SEC filings discovered via the Grounding with Bing Search tool. "
+            "Summarize key deltas and guidance clearly. No raw URLs in body; sources only via citation annotations."
         )
         return self._run_agent_task(query)
 
     def search_industry_context(self, company: str) -> Dict[str, Any]:
         query = (
             f"TASK: Sector/competitive context for {company}. "
-            "Use GWBS to discover credible landscape sources; keep to facts and label opinion as such. "
-            "No raw URLs in body; citations only via annotations."
+            "Use the Grounding with Bing Search tool to discover credible landscape sources; keep to facts and label opinion as such. "
+            "No raw URLs in body; sources only via citation annotations."
         )
         return self._run_agent_task(query)
 
@@ -315,16 +315,16 @@ def test_bing_data_extraction(company: str) -> None:
         if audit:
             print("\nAUDIT:")
             print(f"- citation_count: {audit.get('citation_count')}")
-            if audit.get("bing_queries"):
-                print("- bing_queries:")
-                for q in audit["bing_queries"]:
+            if audit.get("search_queries"):
+                print("- search_queries:")
+                for q in audit["search_queries"]:
                     print(f"  • {q}")
 
 
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Run Bing-powered, schema-based research for a company.")
+    parser = argparse.ArgumentParser(description="Run research with the Grounding with Bing Search tool for a company.")
     parser.add_argument("--company", "-c", required=True, help="Target company name")
     args = parser.parse_args()
     test_bing_data_extraction(args.company)
