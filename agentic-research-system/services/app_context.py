@@ -44,7 +44,7 @@ class AppContext:
         if self.initialized:
             return
 
-        print("🔧 Initializing application context...")
+        print("ð§ Initializing application context...")
 
         # Core services
         self.profile_loader = ProfileLoader()
@@ -90,7 +90,7 @@ class AppContext:
         }
 
         self.initialized = True
-        print("✅ Application context initialized successfully.")
+        print("â Application context initialized successfully.")
 
     async def cleanup(self):
         """
@@ -98,7 +98,7 @@ class AppContext:
         """
         if self.scraper_agent:
             await self.scraper_agent.close()
-        print("🧹 Application context cleaned up.")
+        print("ð§¹ Application context cleaned up.")
 
     @property
     def initialized(self):
