@@ -5,6 +5,8 @@ from __future__ import annotations
 import time
 import threading
 from typing import Any, Optional, Tuple
+import json
+import hashlib
 
 
 class TTLCache:
@@ -40,6 +42,42 @@ class TTLCache:
 
 
 def cache_key(*parts: Any) -> str:
-    safe_parts = [str(p).strip().lower() for p in parts if p is not None]
-    return "|".join(safe_parts)
+    """
+    Build a robust, collision-resistant cache key from arbitrary parts.
 
+    Rationale:
+    - Avoid naïve string joins that can collide (e.g., when parts contain separators).
+    - Preserve semantic identity by normalizing structured values.
+    - Produce a stable key suitable for dictionary indexing.
+
+    Strategy:
+    - Normalize each part into a JSON-serializable value (dict/vars/str fallbacks).
+    - Serialize the list of normalized parts to compact JSON and hash it (SHA1).
+    - Append a short human-readable suffix for quick inspection in logs.
+    """
+    def _normalize(v: Any) -> Any:
+        if v is None or isinstance(v, (str, int, float, bool)):
+            return v
+        # Best-effort conversion for Pydantic/BaseModel or dataclasses
+        for attr in ("dict", "model_dump"):
+            try:
+                m = getattr(v, attr)
+                if callable(m):
+                    return m()
+            except Exception:
+                pass
+        try:
+            return vars(v)
+        except Exception:
+            return str(v)
+
+    normalized = [_normalize(p) for p in parts]
+    raw = json.dumps(normalized, sort_keys=True, separators=(",", ":"), default=str)
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()
+    # Compact human-readable suffix (best-effort)
+    preview = []
+    for p in parts:
+        s = ("null" if p is None else str(p)).strip().lower()
+        preview.append(s[:16])
+    suffix = "|".join(preview)
+    return f"ck:{digest}:{suffix}"
