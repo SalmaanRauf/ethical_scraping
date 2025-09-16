@@ -18,6 +18,7 @@ class QueryType(Enum):
     FOLLOW_UP = auto()
     CLARIFICATION = auto()
     COMPARE_COMPANIES = auto()
+    GENERAL_RESEARCH = auto()
     UNKNOWN = auto()
 
 @dataclass
@@ -178,7 +179,18 @@ class QueryRouter:
             if a and b and a.lower() != b.lower():
                 return QueryType.COMPARE_COMPANIES, {"companies": [a, b]}
 
-        # Check for new analysis imperatives FIRST (before follow-up hints)
+        # Check for new analysis imperatives or "briefing/report on X" FIRST
+        # 1) Natural phrasing: "briefing/report on/about/for <company>"
+        m3 = re.search(r"\b(?:briefing|report)\s+(?:on|about|for)\s+(.+)$", q, re.I)
+        if m3:
+            comp = _clean_company(m3.group(1))
+            if comp:
+                return QueryType.NEW_ANALYSIS, {
+                    "company": {"name": comp, "ticker": None},
+                    "extra_topics": classify_topics(q)
+                }
+
+        # 2) Verb-oriented imperative
         if re.search(r"\b(analyze|research|look up|find info(?:rmation)? (?:on|about)|company report)\b", q, re.I):
             # try to pull a name chunk after the verb
             m2 = re.search(r"(?:analyze|research|look up|about|on)\s+(.+)$", q, re.I)
@@ -189,6 +201,8 @@ class QueryRouter:
                         "company": {"name": comp, "ticker": None},
                         "extra_topics": classify_topics(q)
                     }
+            # If no company extracted, treat as general research
+            return QueryType.GENERAL_RESEARCH, {"prompt": q}
 
         # Try to extract an explicit company
         # Heuristic: if it's short & all caps, assume ticker; else treat as name
@@ -220,6 +234,10 @@ class QueryRouter:
         # If we have an active company and the user didn't provide a clear new one, default to follow-up.
         if ctx.current_company:
             return QueryType.FOLLOW_UP, {"company": ctx.current_company}
+
+        # If the input sounds like a general ask (contains research-y verbs), route to general research
+        if re.search(r"\b(summary|summarize|context|overview|landscape|trends|recent|what's new)\b", q, re.I):
+            return QueryType.GENERAL_RESEARCH, {"prompt": q}
 
         # Otherwise, needs clarification (e.g., "help me decide" with no company)
         return QueryType.CLARIFICATION, {}
