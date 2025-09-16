@@ -12,8 +12,14 @@ def get_database_path():
 
 class Config:
     """
-    Configuration class to hold all settings and API keys.
-    (This app path uses only Azure/OpenAI keys; others remain optional.)
+    Central application configuration.
+
+    - Holds API keys and endpoints used by the Chainlit app and tools.
+    - Centralizes operational knobs (timeouts, limits) to avoid magic numbers
+      scattered across the codebase.
+
+    All values can be overridden via environment variables. Defaults are chosen
+    for usability and can be tuned without code changes.
     """
     # AI Analysis APIs (Azure AI Foundry/ATLAS)
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -27,8 +33,22 @@ class Config:
     MODEL_DEPLOYMENT_NAME = os.getenv("MODEL_DEPLOYMENT_NAME")
     AZURE_BING_CONNECTION_ID = os.getenv("AZURE_BING_CONNECTION_ID")
 
+    # --- Operational settings (timeouts, limits) ---
+    # Timeout for independent GWBS scope fetches (seconds)
+    GWBS_SCOPE_TIMEOUT_SECONDS = int(os.getenv("GWBS_SCOPE_TIMEOUT_SECONDS", "45"))
+    # Timeout for general research (single GWBS run) (seconds)
+    GENERAL_RESEARCH_TIMEOUT_SECONDS = int(os.getenv("GENERAL_RESEARCH_TIMEOUT_SECONDS", "60"))
+    # Timeout while waiting for follow-up research (seconds)
+    FOLLOWUP_TIMEOUT_SECONDS = int(os.getenv("FOLLOWUP_TIMEOUT_SECONDS", "90"))
+
     @classmethod
     def validate(cls):
+        """Lightweight validation and visibility into configuration state.
+
+        Notes:
+        - We only warn on missing keys to keep local/dev setups flexible.
+        - Sensitive values are not printed.
+        """
         required_keys = [
             "OPENAI_API_KEY", "BASE_URL", "PROJECT_ID", "API_VERSION", "MODEL",
             "PROJECT_ENDPOINT", "MODEL_DEPLOYMENT_NAME", "AZURE_BING_CONNECTION_ID",
@@ -36,7 +56,7 @@ class Config:
         missing_keys = [key for key in required_keys if not getattr(cls, key)]
         if missing_keys:
             print(f"⚠️  Warning: Missing some API keys in .env file: {', '.join(missing_keys)}")
-        print("✅ Configuration and API keys are loaded.")
+        print("✅ Configuration, API keys, and operational settings are loaded.")
 
 # Instantiate the config
 try:
@@ -46,4 +66,3 @@ except Exception as e:
     print(f"❌ Configuration Error: {e}")
     import sys
     sys.exit(1)
-
