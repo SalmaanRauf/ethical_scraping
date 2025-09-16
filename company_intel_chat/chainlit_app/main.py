@@ -18,6 +18,7 @@ from services.follow_up_handler import FollowUpHandler
 from services.session_manager import session_manager
 from models.schemas import CompanyRef
 from tools import orchestrators as ors
+from config.config import Config as AppConfig
 
 # --- Input validation helpers ---
 
@@ -186,6 +187,11 @@ async def on_message(message: cl.Message):
             await handle_company_comparison(payload, ctx, bing_agent, analyst_agent)
             return
 
+        elif qtype == QueryType.GENERAL_RESEARCH:
+            # Wire-up for general research (non-company) queries
+            await handle_general_research(payload, bing_agent)
+            return
+
         else:
             await cl.Message("I didn't quite catch that. Try a company name or ask a specific follow-up.").send()
             return
@@ -288,20 +294,44 @@ async def handle_follow_up(ctx: ConversationContext, fup: FollowUpHandler, user_
     """Handle follow-up questions with validation."""
     try:
         if os.getenv("ENABLE_TOOL_ORCHESTRATOR", "false").lower() in ("1", "true", "yes"):
-            active = ctx.get_analysis()
-            cref = CompanyRef(name=(ctx.current_company or {}).get("name", ""), ticker=(ctx.current_company or {}).get("ticker"))
-            blob_dict = active.to_dict() if active else None
-            answer, citations = await ors.follow_up_research(cref, user_text, bing_agent=cl.user_session.get("bing_agent"), analyst_agent=cl.user_session.get("analyst_agent"), ctx_blob=blob_dict)
+            # Prevent overlapping follow-ups with a session lock
+            if not cl.user_session.get("in_flight_lock"):
+                cl.user_session.set("in_flight_lock", asyncio.Lock())
+            lock: asyncio.Lock = cl.user_session.get("in_flight_lock")
+            if lock.locked():
+                await cl.Message("⏸ Interrupting previous request and starting this one…").send()
+            async with lock:
+                await cl.Message("🔄 Working on your request…").send()
+                active = ctx.get_analysis()
+                cref = CompanyRef(name=(ctx.current_company or {}).get("name", ""), ticker=(ctx.current_company or {}).get("ticker"))
+                blob_dict = active.to_dict() if active else None
 
-            cite_lines = []
-            for c in citations or []:
+                async def _run_followup():
+                    return await ors.follow_up_research(
+                        cref, user_text,
+                        bing_agent=cl.user_session.get("bing_agent"),
+                        analyst_agent=cl.user_session.get("analyst_agent"),
+                        ctx_blob=blob_dict,
+                    )
+
                 try:
-                    title = c.title or c.url
-                    cite_lines.append(f"- [{title}]({c.url})")
-                except Exception:
-                    continue
-            footer = ("\n\n**Sources**\n" + "\n".join(cite_lines)) if cite_lines else ""
-            await cl.Message((answer or "I couldn't find information to answer your question.") + footer).send()
+                    # Use configurable timeout instead of a magic number
+                    answer, citations = await asyncio.wait_for(
+                        _run_followup(), timeout=AppConfig.FOLLOWUP_TIMEOUT_SECONDS
+                    )
+                except asyncio.TimeoutError:
+                    await cl.Message("⏱️ Research timed out — please try a more specific question.").send()
+                    return
+
+                cite_lines = []
+                for c in citations or []:
+                    try:
+                        title = c.title or c.url
+                        cite_lines.append(f"- [{title}]({c.url})")
+                    except Exception:
+                        continue
+                footer = ("\n\n**Sources**\n" + "\n".join(cite_lines)) if cite_lines else ""
+                await cl.Message((answer or "I couldn't find information to answer your question.") + footer).send()
         else:
             # Legacy follow-up handler
             result = fup.handle_follow_up(ctx, user_text)
@@ -447,9 +477,56 @@ async def present_comparison_results(a: str, b: str, ana_a: list[Dict[str, Any]]
     await cl.Message(comparison_text).send()
 
 async def present_briefing_results(briefing) -> None:
-    """Present a Briefing (tool orchestrator) payload in chat."""
+    """Present a Briefing (tool orchestrator) payload in chat.
+
+    This renderer normalizes the GWBS sections and analyst events to avoid
+    fragile type checks and silent failures. Any internal errors are logged
+    to stdout for observability while keeping user-facing messages clean.
+    """
     company = getattr(briefing.company, "name", "Company")
     events = getattr(briefing, "events", [])
+    gwbs = getattr(briefing, "gwbs", {})
+
+    # 1) GWBS Findings
+    if gwbs:
+        lines = [f"## GWBS Findings for {company}"]
+        for scope, section in gwbs.items():
+            try:
+                # Normalize section to a dict-like with summary & citations
+                summary = (
+                    getattr(section, "summary", None)
+                    if not isinstance(section, dict)
+                    else section.get("summary")
+                ) or ""
+                citations = (
+                    getattr(section, "citations", None)
+                    if not isinstance(section, dict)
+                    else section.get("citations")
+                ) or []
+                lines.append(f"### {scope.replace('_',' ').title()}")
+                if summary:
+                    # Trim excessively long blocks to keep UX responsive
+                    lines.append(summary if len(summary) < 2400 else summary[:2400] + "…")
+                cite_md: list[str] = []
+                for c in citations:
+                    try:
+                        url = getattr(c, "url", None) if not isinstance(c, dict) else c.get("url")
+                        title = getattr(c, "title", None) if not isinstance(c, dict) else c.get("title")
+                        if url:
+                            cite_md.append(f"- [{title or url}]({url})")
+                    except Exception as cite_err:
+                        print(f"Warning: failed to render citation for scope '{scope}': {type(cite_err).__name__}: {cite_err}")
+                        continue
+                if cite_md:
+                    lines.append("**Sources**")
+                    lines.extend(cite_md[:8])
+                lines.append("")
+            except Exception as sec_err:
+                print(f"Warning: failed to render GWBS section '{scope}': {type(sec_err).__name__}: {sec_err}")
+                continue
+        await cl.Message("\n".join(lines)).send()
+
+    # 2) Analyst Insights
     if not events:
         await cl.Message(f"### 📊 {company} — Analysis Results\n\nNo significant events identified in current data.").send()
         return
@@ -457,8 +534,9 @@ async def present_briefing_results(briefing) -> None:
     out_lines = [f"### 📊 {company} — Analysis Results", f"Found {len(events)} significant event(s):"]
     for i, ev in enumerate(events[:6], 1):
         try:
-            title = getattr(ev, "title", None) or ev.get("title")  # supports Pydantic or dict
-            insights = getattr(ev, "insights", None) or ev.get("insights", {})
+            # supports Pydantic model or dict
+            title = getattr(ev, "title", None) or (ev.get("title") if isinstance(ev, dict) else None)
+            insights = getattr(ev, "insights", None) or (ev.get("insights") if isinstance(ev, dict) else {})
             what = (insights or {}).get("what_happened", "")
             why = (insights or {}).get("why_it_matters", "")
             out_lines.append(f"{i}. **{title or 'Unknown Event'}**")
@@ -466,10 +544,51 @@ async def present_briefing_results(briefing) -> None:
                 out_lines.append(f"   • What happened: {what}")
             if why:
                 out_lines.append(f"   • Why it matters: {why}")
-        except Exception:
+        except Exception as ev_err:
+            print(f"Warning: failed to render event #{i}: {type(ev_err).__name__}: {ev_err}")
             continue
         out_lines.append("")
     await cl.Message("\n".join(out_lines)).send()
+
+async def handle_general_research(payload: Dict[str, Any], bing_agent: BingDataExtractionAgent):
+    """Handle general (non-company) research via a single GWBS session.
+
+    Validates the payload shape, reports progress, and surfaces a concise
+    answer with citations. Uses configurable timeouts downstream.
+    """
+    try:
+        if not isinstance(payload, dict):
+            await cl.Message("I couldn't process that. Please type a short research request.").send()
+            return
+
+        prompt = (payload.get("prompt") or "").strip()
+        if not prompt:
+            await cl.Message("What should I research? Try 'Summarize the recent AI regulations for US banks'.").send()
+            return
+
+        await cl.Message("🔄 Running general research…").send()
+
+        async def _progress(_):
+            try:
+                await cl.Message("✅ Search initialized").send()
+            except Exception as cb_err:
+                print(f"Warning: general research progress callback failed: {type(cb_err).__name__}: {cb_err}")
+
+        summary, citations = await ors.general_research(
+            prompt, bing_agent=bing_agent, progress=_progress
+        )
+
+        cite_lines = []
+        for c in citations or []:
+            try:
+                cite_lines.append(f"- [{c.title or c.url}]({c.url})")
+            except Exception as cite_err:
+                print(f"Warning: failed to render general research citation: {type(cite_err).__name__}: {cite_err}")
+                continue
+        footer = ("\n\n**Sources**\n" + "\n".join(cite_lines)) if cite_lines else ""
+        await cl.Message((summary or "No material updates.") + footer).send()
+    except Exception as e:
+        await handle_error(e, "general_research", "Failed to complete general research.")
 
 # Cleanup on shutdown
 @cl.on_chat_end
