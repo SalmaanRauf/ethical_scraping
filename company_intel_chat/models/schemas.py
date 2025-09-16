@@ -67,4 +67,5 @@ class Briefing(BaseModel):
     events: List[AnalysisEvent] = Field(default_factory=list)
     summary: str = Field("")
     sections: Dict[str, str] = Field(default_factory=dict)
-
+    # Optional: include full GWBS sections (with citations) for rich presentation
+    gwbs: Dict[str, GWBSSection] = Field(default_factory=dict)
