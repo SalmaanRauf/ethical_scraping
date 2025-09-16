@@ -6,11 +6,12 @@ from typing import List, Tuple, Optional, Callable, Awaitable, Dict
 import re
 import asyncio
 
-from models.schemas import CompanyRef, Citation, GWBSSection, FullGWBS, AnalysisItem, AnalysisEvent, Briefing
+from models.schemas import CompanyRef, Citation, GWBSSection, FullGWBS, AnalysisItem, AnalysisEvent, Briefing, ScopeLiteral
 from tools.gwbs_tools import gwbs_full, gwbs_search
 from tools.analyst_tools import analyst_synthesis
 from services.cache import TTLCache, cache_key
 from services.classifier import classify_primary, needs_analyst as _needs_analyst, scopes_for_label
+from config.config import Config as AppConfig
 
 _briefing_cache = TTLCache(maxsize=64, ttl_seconds=1800)
 
@@ -40,19 +41,42 @@ async def full_company_analysis(
     analyst_agent,
     progress: Optional[Callable[[str], Awaitable[None]]] = None,
 ) -> Briefing:
+    """
+    Run a full company analysis by fetching multiple GWBS scopes concurrently and
+    synthesizing analyst events.
+
+    - Concurrency: independent scopes run concurrently with per-scope timeouts.
+    - Progress: an optional async callback receives the scope name as each completes.
+    - Caching: returns a cached Briefing when available to avoid redundant work.
+
+    Args:
+        company: Target company reference (name and optional ticker).
+        bing_agent: Research agent to execute GWBS-backed searches.
+        analyst_agent: Analyst agent to synthesize structured events.
+        progress: Optional async callable receiving completed scope names.
+
+    Returns:
+        Briefing: The aggregated company briefing including GWBS sections and events.
+    """
     bkey = cache_key("briefing", company.name, company.ticker)
     cached = _briefing_cache.get(bkey)
     if cached:
         return cached
 
-    scopes = ["sec_filings", "news", "procurement", "earnings", "industry_context"]
+    # Constrain to the allowed ScopeLiteral values to maintain type safety.
+    scopes: List[ScopeLiteral] = [
+        "sec_filings", "news", "procurement", "earnings", "industry_context"
+    ]
 
-    async def _fetch_scope(scope: str) -> GWBSSection:
-        # 45s per-scope timeout guard; run sync GWBS call in thread
-        return await asyncio.wait_for(asyncio.to_thread(gwbs_search, scope, company, bing_agent), timeout=45)
+    async def _fetch_scope(scope: ScopeLiteral) -> GWBSSection:
+        """Fetch a single GWBS scope with a global, configurable timeout."""
+        return await asyncio.wait_for(
+            asyncio.to_thread(gwbs_search, scope, company, bing_agent),
+            timeout=AppConfig.GWBS_SCOPE_TIMEOUT_SECONDS,
+        )
 
     # Kick off all scopes concurrently
-    tasks: Dict[asyncio.Task, str] = {}
+    tasks: Dict[asyncio.Task, ScopeLiteral] = {}
     for s in scopes:
         t = asyncio.create_task(_fetch_scope(s))
         tasks[t] = s
@@ -67,23 +91,39 @@ async def full_company_analysis(
             if progress:
                 try:
                     await progress(scope_name)
-                except Exception:
-                    pass
-        except Exception:
-            sections[scope_name] = GWBSSection(scope=scope_name, summary=f"(Failed to fetch {scope_name})", citations=[], audit={})  # type: ignore[arg-type]
+                except Exception as cb_err:
+                    # Non-fatal: log and continue without breaking user flow
+                    print(f"Warning: progress callback failed for scope '{scope_name}': {type(cb_err).__name__}: {cb_err}")
+        except Exception as fetch_err:
+            # Capture failure details in audit for observability
+            sections[scope_name] = GWBSSection(
+                scope=scope_name,
+                summary=f"(Failed to fetch {scope_name})",
+                citations=[],
+                audit={"error": f"{type(fetch_err).__name__}: {fetch_err}"},
+            )
 
     gwbs = FullGWBS(company=company, sections=sections)
     analysis_items = _analysis_items_from_gwbs(gwbs)
     events = await analyst_synthesis(analysis_items, analyst_agent)
     summary = f"Identified {len(events)} significant events for {company.name}."
     sec_summaries = {k: v.summary for k, v in gwbs.sections.items()}
-    briefing = Briefing(company=company, events=events, summary=summary, sections=sec_summaries)
+    briefing = Briefing(company=company, events=events, summary=summary, sections=sec_summaries, gwbs=gwbs.sections)
     _briefing_cache.set(bkey, briefing)
     return briefing
 
 """Classification helpers are imported from services.classifier."""
 
 async def follow_up_research(company: CompanyRef, question: str, *, bing_agent, analyst_agent, ctx_blob=None) -> Tuple[str, List[Citation]]:
+    """
+    Answer a follow-up question in the context of a company's existing briefing.
+
+    - Uses contextual hits from the prior analyst blob when possible for speed.
+    - Otherwise, classifies the question and runs targeted GWBS scopes with a
+      global, configurable timeout per scope.
+    - If synthesis is indicated, invokes the analyst to produce a concise answer
+      with citations.
+    """
     if ctx_blob and isinstance(ctx_blob, dict):
         q_lower = (question or "").lower()
         pools: List[str] = []
@@ -100,7 +140,10 @@ async def follow_up_research(company: CompanyRef, question: str, *, bing_agent, 
     scopes = scopes_for_label(label)
     # Run targeted GWBS scopes concurrently in background threads with timeouts
     async def _fetch(scope: str) -> GWBSSection:
-        return await asyncio.wait_for(asyncio.to_thread(gwbs_search, scope, company, bing_agent), timeout=45)
+        return await asyncio.wait_for(
+            asyncio.to_thread(gwbs_search, scope, company, bing_agent),
+            timeout=AppConfig.GWBS_SCOPE_TIMEOUT_SECONDS,
+        )
     results = await asyncio.gather(*[asyncio.create_task(_fetch(s)) for s in scopes], return_exceptions=True)
     sections: List[GWBSSection] = []
     for res in results:
@@ -140,3 +183,41 @@ async def follow_up_research(company: CompanyRef, question: str, *, bing_agent, 
 async def competitor_analysis(company: CompanyRef, *, bing_agent) -> GWBSSection:
     # Offload to background thread
     return await asyncio.to_thread(gwbs_search, "competitors", company, bing_agent)
+
+
+async def general_research(prompt: str, *, bing_agent, progress: Optional[Callable[[str], Awaitable[None]]] = None) -> Tuple[str, List[Citation]]:
+    """
+    Run a single GWBS session from a general prompt (no company context).
+    Streams a single progress marker if provided and returns (summary, citations).
+    """
+    if progress:
+        try:
+            await progress("general")
+        except Exception as cb_err:
+            print(f"Warning: progress callback failed for 'general': {type(cb_err).__name__}: {cb_err}")
+    # Run the custom prompt in a background thread with a reasonable timeout
+    async def _run():
+        return await asyncio.wait_for(
+            asyncio.to_thread(bing_agent.run_custom_search, prompt),
+            timeout=AppConfig.GENERAL_RESEARCH_TIMEOUT_SECONDS,
+        )
+    try:
+        raw = await _run()
+    except Exception as e:
+        # Return a friendly message to the user; keep details out of chat
+        print(f"Error in general_research: {type(e).__name__}: {e}")
+        return "I couldn't complete that search in time. Please try again.", []
+    # Extract citations
+    md = (raw or {}).get("citations_md", "")
+    cites: List[Citation] = []
+    if md:
+        # simple parse of markdown bullets
+        import re
+        for line in md.splitlines():
+            m = re.match(r"^- \[(?P<title>[^\]]+)\]\((?P<url>https?://[^)]+)\)", line.strip())
+            if m:
+                try:
+                    cites.append(Citation(title=m.group("title"), url=m.group("url")))
+                except Exception:
+                    continue
+    return (raw or {}).get("summary", ""), cites[:8]
