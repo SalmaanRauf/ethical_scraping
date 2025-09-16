@@ -4,7 +4,7 @@ GWBS (Grounding with Bing Search) tool wrappers.
 from __future__ import annotations
 from typing import Dict
 
-from models.schemas import CompanyRef, Citation, GWBSSection, FullGWBS
+from models.schemas import CompanyRef, Citation, GWBSSection, FullGWBS, ScopeLiteral
 from services.cache import TTLCache, cache_key
 from agents.bing_data_extraction_agent import BingDataExtractionAgent
 
@@ -21,7 +21,14 @@ def _to_citations_md_list(md: str) -> list[Citation]:
             out.append(Citation(title=m.group("title"), url=m.group("url")))
     return out
 
-def gwbs_search(scope: str, company: CompanyRef, agent: BingDataExtractionAgent) -> GWBSSection:
+def gwbs_search(scope: ScopeLiteral, company: CompanyRef, agent: BingDataExtractionAgent) -> GWBSSection:
+    """
+    Execute a GWBS search for a single scope for the given company.
+
+    Returns a typed `GWBSSection` containing summary text, parsed citations,
+    and any optional audit info available from the underlying agent.
+    Results are cached in-memory for a short TTL to reduce duplicate work.
+    """
     ckey = cache_key("gwbs_search", scope, company.name, company.ticker)
     cached = _gwbs_cache.get(ckey)
     if cached:
@@ -42,7 +49,7 @@ def gwbs_search(scope: str, company: CompanyRef, agent: BingDataExtractionAgent)
     else:
         raise ValueError(f"Unknown GWBS scope: {scope}")
     section = GWBSSection(
-        scope=scope,  # type: ignore[arg-type]
+        scope=scope,
         summary=(raw or {}).get("summary", ""),
         citations=_to_citations_md_list((raw or {}).get("citations_md", "")),
         audit=(raw or {}).get("audit", {}),
