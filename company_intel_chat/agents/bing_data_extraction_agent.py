@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from azure.ai.projects import AIProjectClient
 from azure.ai.agents.models import MessageRole, BingGroundingTool
-from azure.identity import DefaultAzureCredential
+from azure.identity import DefaultAzureCredential, EnvironmentCredential
 
 
 def _cond_load_dotenv() -> None:
@@ -67,11 +67,37 @@ class BingDataExtractionAgent:
         azure_bing_connection_id: Optional[str] = None,
         credential: Optional[Any] = None,
     ):
+        """
+        Initialize the research agent.
+
+        Credential selection strategy:
+        - If an explicit `credential` is provided, use it.
+        - Else, if all required Azure environment service principal values are set
+          (AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_CLIENT_SECRET), prefer
+          `EnvironmentCredential` to avoid slow IMDS probing.
+        - Else, fall back to `DefaultAzureCredential` with interactive browser
+          credential disabled to prevent unexpected prompts in server contexts.
+        """
         _cond_load_dotenv()
         self.project_endpoint = project_endpoint or os.environ.get("PROJECT_ENDPOINT")
         self.model_deployment_name = model_deployment_name or os.environ.get("MODEL_DEPLOYMENT_NAME")
         self.azure_bing_connection_id = azure_bing_connection_id or os.environ.get("AZURE_BING_CONNECTION_ID")
-        self.credential = credential or DefaultAzureCredential()
+        # Prefer environment-based credential if present to avoid slow IMDS probing
+        if credential is not None:
+            self.credential = credential
+        else:
+            # If Azure env SP creds exist, prefer EnvironmentCredential
+            has_sp_env = all(
+                os.environ.get(k)
+                for k in ("AZURE_CLIENT_ID", "AZURE_TENANT_ID", "AZURE_CLIENT_SECRET")
+            )
+            if has_sp_env:
+                self.credential = EnvironmentCredential()
+            else:
+                # Avoid interactive browser credential in non-interactive environments
+                self.credential = DefaultAzureCredential(
+                    exclude_interactive_browser_credential=True
+                )
 
         if not all([self.project_endpoint, self.model_deployment_name, self.azure_bing_connection_id]):
             raise ValueError(
@@ -311,6 +337,13 @@ class BingDataExtractionAgent:
             "Use the Grounding with Bing Search tool, provide concise bullets, and cite all claims (annotations)."
         )
         return self._run_agent_task(query)
+
+    def run_custom_search(self, prompt: str) -> Dict[str, Any]:
+        """
+        Execute a custom research prompt using GWBS. Returns a dict with
+        summary, citations_md, and audit (search queries, citation_count).
+        """
+        return self._run_agent_task(prompt)
 
 
 def test_bing_data_extraction(company: str) -> None:
