@@ -478,18 +478,20 @@ async def present_comparison_results(a: str, b: str, ana_a: list[Dict[str, Any]]
 
 async def present_briefing_results(briefing) -> None:
     """Present a Briefing (tool orchestrator) payload in chat.
-
-    This renderer normalizes the GWBS sections and analyst events to avoid
-    fragile type checks and silent failures. Any internal errors are logged
-    to stdout for observability while keeping user-facing messages clean.
+    
+    Shows raw GWBS output as markdown followed by comprehensive analyst results.
     """
     company = getattr(briefing.company, "name", "Company")
     events = getattr(briefing, "events", [])
     gwbs = getattr(briefing, "gwbs", {})
 
-    # 1) GWBS Findings
+    # 1) Raw GWBS Findings as Markdown
     if gwbs:
-        lines = [f"## GWBS Findings for {company}"]
+        lines = [f"# 🔍 Raw Research Results for {company}"]
+        lines.append("")
+        lines.append("## Grounding with Bing Search (GWBS) Findings")
+        lines.append("")
+        
         for scope, section in gwbs.items():
             try:
                 # Normalize section to a dict-like with summary & citations
@@ -503,53 +505,141 @@ async def present_briefing_results(briefing) -> None:
                     if not isinstance(section, dict)
                     else section.get("citations")
                 ) or []
+                
                 lines.append(f"### {scope.replace('_',' ').title()}")
+                lines.append("")
+                
                 if summary:
-                    # Trim excessively long blocks to keep UX responsive
-                    lines.append(summary if len(summary) < 2400 else summary[:2400] + "…")
-                cite_md: list[str] = []
+                    # Show full summary without truncation
+                    lines.append(summary)
+                    lines.append("")
+                
+                # Show all citations as markdown links
+                if citations:
+                    lines.append("**Sources:**")
+                    for c in citations:
+                        try:
+                            url = getattr(c, "url", None) if not isinstance(c, dict) else c.get("url")
+                            title = getattr(c, "title", None) if not isinstance(c, dict) else c.get("title")
+                            if url:
+                                lines.append(f"- [{title or url}]({url})")
+                        except Exception as cite_err:
+                            print(f"Warning: failed to render citation for scope '{scope}': {type(cite_err).__name__}: {cite_err}")
+                            continue
+                    lines.append("")
+                
+            except Exception as sec_err:
+                print(f"Warning: failed to render GWBS section '{scope}': {type(sec_err).__name__}: {sec_err}")
+                continue
+        
+        # Send raw GWBS results first
+        await cl.Message("\n".join(lines)).send()
+
+    # 2) Comprehensive Analyst Insights
+    if not events:
+        await cl.Message(f"### �� {company} — Analysis Results\n\nNo significant events identified in current data.").send()
+        return
+
+    # Create comprehensive analysis display
+    out_lines = [f"# 📊 {company} — Comprehensive Analysis Results"]
+    out_lines.append("")
+    out_lines.append(f"**Executive Summary:** Found {len(events)} significant event(s) requiring attention.")
+    out_lines.append("")
+    
+    for i, ev in enumerate(events[:10], 1):  # Show up to 10 events
+        try:
+            # supports Pydantic model or dict
+            title = getattr(ev, "title", None) or (ev.get("title") if isinstance(ev, dict) else None)
+            insights = getattr(ev, "insights", None) or (ev.get("insights") if isinstance(ev, dict) else {})
+            
+            if not insights or not isinstance(insights, dict):
+                continue
+                
+            out_lines.append(f"## 🔥 Event #{i}: {title or 'Unknown Event'}")
+            out_lines.append("")
+            
+            # What happened
+            what = insights.get("what_happened", "")
+            if what:
+                out_lines.append(f"**What Happened:** {what}")
+                out_lines.append("")
+            
+            # Why it matters
+            why = insights.get("why_it_matters", "")
+            if why:
+                out_lines.append(f"**Why It Matters:** {why}")
+                out_lines.append("")
+            
+            # Consulting angle
+            consulting_angle = insights.get("consulting_angle", "")
+            if consulting_angle:
+                out_lines.append(f"**🎯 Consulting Angle:** {consulting_angle}")
+                out_lines.append("")
+            
+            # Business impact details
+            need_type = insights.get("need_type", "")
+            service_line = insights.get("service_line", "")
+            urgency = insights.get("urgency", "")
+            priority = insights.get("priority", "")
+            timeline = insights.get("timeline", "")
+            
+            if any([need_type, service_line, urgency, priority, timeline]):
+                out_lines.append("**📈 Business Impact:**")
+                if need_type:
+                    out_lines.append(f"- **Need Type:** {need_type}")
+                if service_line:
+                    out_lines.append(f"- **Service Line:** {service_line}")
+                if urgency:
+                    out_lines.append(f"- **Urgency:** {urgency}")
+                if priority:
+                    out_lines.append(f"- **Priority:** {priority}")
+                if timeline:
+                    out_lines.append(f"- **Timeline:** {timeline}")
+                out_lines.append("")
+            
+            # Service categories
+            service_categories = insights.get("service_categories", [])
+            if service_categories and isinstance(service_categories, list):
+                out_lines.append(f"**🔧 Service Categories:** {', '.join(service_categories)}")
+                out_lines.append("")
+            
+            # Industry overview
+            industry_overview = insights.get("industry_overview", "")
+            if industry_overview:
+                out_lines.append(f"**🌐 Industry Context:** {industry_overview}")
+                out_lines.append("")
+            
+            # Source URLs from insights
+            source_urls = insights.get("source_urls", [])
+            if source_urls and isinstance(source_urls, list):
+                out_lines.append("**📚 Sources:**")
+                for url in source_urls:
+                    out_lines.append(f"- {url}")
+                out_lines.append("")
+            
+            # Citations from event
+            citations = getattr(ev, "citations", None) or (ev.get("citations") if isinstance(ev, dict) else [])
+            if citations:
+                out_lines.append("**📖 Additional Sources:**")
                 for c in citations:
                     try:
                         url = getattr(c, "url", None) if not isinstance(c, dict) else c.get("url")
                         title = getattr(c, "title", None) if not isinstance(c, dict) else c.get("title")
                         if url:
-                            cite_md.append(f"- [{title or url}]({url})")
-                    except Exception as cite_err:
-                        print(f"Warning: failed to render citation for scope '{scope}': {type(cite_err).__name__}: {cite_err}")
+                            out_lines.append(f"- [{title or url}]({url})")
+                    except Exception:
                         continue
-                if cite_md:
-                    lines.append("**Sources**")
-                    lines.extend(cite_md[:8])
-                lines.append("")
-            except Exception as sec_err:
-                print(f"Warning: failed to render GWBS section '{scope}': {type(sec_err).__name__}: {sec_err}")
-                continue
-        await cl.Message("\n".join(lines)).send()
-
-    # 2) Analyst Insights
-    if not events:
-        await cl.Message(f"### 📊 {company} — Analysis Results\n\nNo significant events identified in current data.").send()
-        return
-
-    out_lines = [f"### 📊 {company} — Analysis Results", f"Found {len(events)} significant event(s):"]
-    for i, ev in enumerate(events[:6], 1):
-        try:
-            # supports Pydantic model or dict
-            title = getattr(ev, "title", None) or (ev.get("title") if isinstance(ev, dict) else None)
-            insights = getattr(ev, "insights", None) or (ev.get("insights") if isinstance(ev, dict) else {})
-            what = (insights or {}).get("what_happened", "")
-            why = (insights or {}).get("why_it_matters", "")
-            out_lines.append(f"{i}. **{title or 'Unknown Event'}**")
-            if what:
-                out_lines.append(f"   • What happened: {what}")
-            if why:
-                out_lines.append(f"   • Why it matters: {why}")
+                out_lines.append("")
+            
+            out_lines.append("---")
+            out_lines.append("")
+            
         except Exception as ev_err:
             print(f"Warning: failed to render event #{i}: {type(ev_err).__name__}: {ev_err}")
             continue
-        out_lines.append("")
+    
+    # Send comprehensive analysis
     await cl.Message("\n".join(out_lines)).send()
-
 async def handle_general_research(payload: Dict[str, Any], bing_agent: BingDataExtractionAgent):
     """Handle general (non-company) research via a single GWBS session.
 

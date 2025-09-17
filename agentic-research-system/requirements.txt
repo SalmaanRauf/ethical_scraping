@@ -48,5 +48,8 @@ python-Levenshtein>=0.21.0
 # Additional Utilities
 asyncio-throttle>=1.0.2
 
+# Models/Validation
+pydantic>=1.10,<3
+
 # Note: zoneinfo is built into Python 3.9+ for timezone handling
 # If using Python < 3.9, install: pip install backports.zoneinfo 

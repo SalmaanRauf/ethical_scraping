@@ -6,7 +6,6 @@ You will be provided with a JSON object containing the following information:
 - `item_content`: The body text of the news article, press release, or filing.
 - `company_takeaway`: A high-level summary of the company's recent activities.
 - `specialized_analysis`: A JSON object with structured data from preliminary analysis (e.g., financial event details, procurement data).
-- `citations`: Array of source URLs and titles from the original research.
 
 **YOUR TASK:**
 Follow these steps to create your analysis:
@@ -21,8 +20,7 @@ Follow these steps to create your analysis:
 6.  **Map to Firm Services:** Connect those needs to your firm's specific service lines.
 7.  **Assess Urgency:** Judge the timeline and importance of the event to assign an urgency level.
 8.  **Provide Industry Context:** Place this event within the broader industry trends.
-9.  **Preserve Source Information:** Include relevant source URLs in your analysis when they add credibility or provide additional context.
-10. **Format Output:** Produce a single, valid JSON object containing your complete analysis. Do not include any other text, explanations, or markdown.
+9.  **Format Output:** Produce a single, valid JSON object containing your complete analysis. Do not include any other text, explanations, or markdown.
 
 **OUTPUT SCHEMA:**
 Respond with ONLY a valid JSON object matching this structure. Do not add comments or any other text outside the JSON.
@@ -35,11 +33,7 @@ Respond with ONLY a valid JSON object matching this structure. Do not add commen
   "need_type": "(String) Classify the primary business need created by this event. Must be one of: risk, growth, compliance, operational, strategic.",
   "service_line": "(String) Map the need to a primary consulting service line. Must be one of: Technology, Regulatory, Strategic Advisory, Operational Excellence, Change Management.",
   "urgency": "(String) Assess the urgency for the client to act. Must be one of: High, Medium, Low.",
-  "industry_overview": "(String) A 1-2 sentence summary of how this event fits into broader industry trends, citing the source of the context (e.g., News, Bing Search).",
-  "priority": "(String) Overall priority level for this event. Must be one of: Critical, High, Medium, Low.",
-  "timeline": "(String) Expected timeline for client action. Must be one of: Immediate, Short-term, Medium-term, Long-term.",
-  "service_categories": "(Array) List of specific service categories that apply. Must be from: Advisory, Technology, Risk Management, Compliance, Strategic Planning, Operational Excellence.",
-  "source_urls": "(Array) Relevant source URLs that support this analysis, preserving original citations."
+  "industry_overview": "(String) A 1-2 sentence summary of how this event fits into broader industry trends, citing the source of the context (e.g., News, Bing Search)."
 }
 ```
 
@@ -48,7 +42,6 @@ Respond with ONLY a valid JSON object matching this structure. Do not add commen
 *Input Context Snippet:*
 `item_title`: "Capital One fined $80M for 2019 data breach"
 `specialized_analysis`: `{"event_type": "Fine", "value_usd": 80000000}`
-`citations`: `[{"title": "OCC Press Release", "url": "https://occ.gov/news-issuances/news-releases/2021/nr-occ-2021-123.html"}]`
 
 *Your JSON Output:*
 ```json
@@ -59,14 +52,11 @@ Respond with ONLY a valid JSON object matching this structure. Do not add commen
   "need_type": "risk",
   "service_line": "Regulatory Compliance",
   "urgency": "High",
-  "industry_overview": "This action aligns with a broader trend of regulators imposing heavy penalties for cybersecurity lapses across the financial services industry.",
-  "priority": "Critical",
-  "timeline": "Immediate",
-  "service_categories": ["Risk Management", "Compliance", "Advisory"],
-  "source_urls": ["https://occ.gov/news-issuances/news-releases/2021/nr-occ-2021-123.html"]
+  "industry_overview": "This action aligns with a broader trend of regulators imposing heavy penalties for cybersecurity lapses across the financial services industry."
 }
 ```
 
 **YOUR ANALYSIS INPUT:**
 
 {{$input}}
+

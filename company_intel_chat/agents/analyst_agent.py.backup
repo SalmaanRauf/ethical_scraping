@@ -475,7 +475,6 @@ class AnalystAgent:
                     'key_buyers': company_profile.get('key_buyers', []),
                     'projects': company_profile.get('projects', []),
                     'protiviti_alumni': company_profile.get('protiviti_alumni', []),
-                    'citations': event.get('citations', []),
                 }
                 if 'financial_analysis' in event:
                     insight_data.update(event['financial_analysis'])

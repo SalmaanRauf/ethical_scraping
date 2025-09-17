@@ -27,6 +27,7 @@ You are a financial event detection specialist. Analyze news articles and SEC fi
 - Determine event type and strategic significance  
 - Assess regulatory implications and compliance impact  
 - Evaluate consulting opportunities
+- Preserve source URLs for credibility and verification
 
 Input Text:
 {{$input}}
@@ -44,5 +45,6 @@ All keys and string values should be double-quoted, and booleans/unquoted values
   "company": "Primary company name involved",
   "confidence": "high" | "medium" | "low",
   "consulting_angle": "Brief note on potential consulting opportunities",
-  "regulatory_impact": "Any regulatory implications noted"
+  "regulatory_impact": "Any regulatory implications noted",
+  "source_urls": "Array of relevant source URLs"
 }

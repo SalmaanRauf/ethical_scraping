@@ -7,12 +7,14 @@ You are a strategic account leader. Generate a concise, actionable company summa
 - Protiviti alumni now at client
 - Event and analyst insight summaries
 - Industry/Market Overview from Websearch
+- Source URLs and citations from research
 
 **Your Tasks:**
 - Synthesize all context into a brief, clear summary for internal consulting use
 - Highlight leverageable relationships (buyers, alumni), and current project in-roads
 - Suggest new areas of opportunity for upsell/cross-sell or to deepen relationship
 - List next recommended action items (specific outreach, intro, opportunity pursuit)
+- Preserve important source URLs for credibility and follow-up research
 - Keep summary to under 150 words if possible
 
 Respond ONLY with a valid JSON object and NOTHING ELSE.
@@ -21,6 +23,9 @@ Do NOT include any explanations, preambles, or formatting before or after the JS
 All keys and string values should be double-quoted. Reply with nothing outside the opening and closing curly braces.
 
 {
-  "summary": "Summary of provided context: As strategic account leader, consolidate company insights for consulting actions. Review company profile (industry, revenue, size, key facts), previous and current projects (solution areas), buyer contacts and history, Protiviti alumni in client, and events/analyst insights. Synthesize into a concise summary for internal use: highlight buyer and alumni relationships, identify current project inroads, and propose upsell/cross-sell or engagement-deepening opportunities. Recommend next steps (targeted outreach, key intros, opportunity follow-ups). Summary should remain under 150 words. Return only a JSON object with the 'summary' key. Do not include code fences or additional text."
+  "summary": "Concise summary highlighting key relationships, opportunities, and recommended actions",
+  "key_relationships": "List of key buyers and alumni to leverage",
+  "opportunities": "Specific upsell/cross-sell opportunities identified",
+  "next_actions": "List of recommended next steps",
+  "source_urls": "Array of important source URLs for credibility"
 }
-
