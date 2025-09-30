@@ -254,14 +254,14 @@ class BingDataExtractionAgent:
             if citations:
                 citations_md = "\n".join([f"- [{c['title']}]({c['url']})" for c in citations])
 
-                return {
-                    "summary": body,
-                    "citations_md": citations_md,
-                    "audit": {
-                        "citation_count": len(citations),
-                        "search_queries": [user_prompt]
-                    }
+            return {
+                "summary": body or "",
+                "citations_md": citations_md,
+                "audit": {
+                    "citation_count": len(citations),
+                    "search_queries": [user_prompt]
                 }
+            }
         except Exception as exc:
             logger.exception("Bing agent task failed for prompt '%s'", user_prompt)
             raise
