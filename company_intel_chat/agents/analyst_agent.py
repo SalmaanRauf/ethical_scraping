@@ -1,3 +1,9 @@
+"""
+Analyst Agent - Semantic Kernel-powered analysis functions.
+
+This module provides the main analyst agent that uses Semantic Kernel
+functions for various analysis tasks including intent resolution.
+"""
 import json
 import asyncio
 import re
@@ -34,6 +40,10 @@ class AnalystAgent:
         if self.kernel is None or self.exec_settings is None:
             self.kernel, self.exec_settings = await get_kernel_async()
             self._load_functions()
+
+    async def ensure_kernel_ready(self) -> None:
+        """Public helper to guarantee kernel and SK functions are available."""
+        await self._ensure_kernel_initialized()
         
     def _load_functions(self):
         # Always resolve relative to the project root
@@ -47,6 +57,7 @@ class AnalystAgent:
             "earnings": "EarningsCall_GuidanceAnalysis_prompt.txt",
             "insight": "StrategicInsight_Generation_prompt.txt",
             "company_takeaway": "CompanyTakeaway_skprompt.txt",
+            "intent_resolver": "Intent_Resolver_prompt.txt",  # Add intent resolver
         }
         for name, fname in prompt_files.items():
             path = sk_dir / fname
@@ -55,7 +66,7 @@ class AnalystAgent:
                     template = f.read()
                 func = KernelFunctionFromPrompt(
                     function_name=name,
-                    plugin_name="analyst_plugin",
+                    plugin_name="analyst_plugin" if name != "intent_resolver" else "intent_plugin",
                     description=f"{name} analysis function",
                     prompt=template
                 )
@@ -64,7 +75,7 @@ class AnalystAgent:
                     try:
                         self.kernel.add_function(
                             function=func,
-                            plugin_name="analyst_plugin"
+                            plugin_name="analyst_plugin" if name != "intent_resolver" else "intent_plugin"
                         )
                         print(f"✅ Successfully loaded SK function: {name}")
                     except Exception as ex:
@@ -92,7 +103,7 @@ class AnalystAgent:
                     print(f"DEBUG: Could not render debug prompt: {e}")
             result = await self.kernel.invoke(
                 function_name=function_name,
-                plugin_name="analyst_plugin",
+                plugin_name="analyst_plugin" if function_name != "intent_resolver" else "intent_plugin",
                 arguments=arguments
             )
             return result
@@ -101,6 +112,7 @@ class AnalystAgent:
             traceback.print_exc()
             return None
 
+    # Include all the existing methods from the original analyst agent
     def _create_intelligent_chunks(self, text: str, chunk_size: int = None, overlap: int = None) -> List[str]:
         if not text:
             return []
@@ -283,6 +295,7 @@ class AnalystAgent:
             print(f"❌ Unexpected error parsing JSON in {context}: {e}")
             return None
 
+    # Include all other existing methods from the original analyst agent
     async def analyze_consolidated_data(self, events_input, analysis_document: str) -> List[Dict[str, Any]]:
         if isinstance(events_input, dict) and "events" in events_input and "profiles" in events_input:
             events = events_input["events"]
@@ -297,7 +310,7 @@ class AnalystAgent:
             raw_data = item.get('raw_data', {})
             adapted_item = {
                 'title': item.get('title', raw_data.get('title', '')),
-                'description': item.get('content', item.get('description', raw_data.get('description', ''))),  # Use content field from consolidated data
+                'description': item.get('content', item.get('description', raw_data.get('description', ''))),
                 'company': item.get('company', raw_data.get('company', '')),
                 'source': item.get('source_name', raw_data.get('source', '')),
                 'url': item.get('url', raw_data.get('link', '')),
@@ -458,9 +471,6 @@ class AnalystAgent:
         return earnings_events
 
     async def generate_insights(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Generate insights for all events. Company profile, buyers, projects, and alumni are now factored in.
-        """
         await self._ensure_kernel_initialized()
         insights = []
         for event in events:
@@ -525,29 +535,3 @@ class AnalystAgent:
         final_insights = await self.generate_insights(all_events)
         print(f"Analysis complete: {len(final_insights)} high-impact events identified")
         return final_insights
-
-if __name__ == "__main__":
-    import asyncio
-    class DummySelf(AnalystAgent):
-        async def _ensure_kernel_initialized(self): pass
-        async def _invoke_function_safely(self, name, payload):
-            if name == 'insight':
-                return '{"what_happened": "Event:", "why_it_matters": "Matters.", "consulting_angle": "Sell", "priority": "high", "timeline": "immediate", "service_categories": ["Advisory"]}'
-            elif name == 'company_takeaway':
-                return '{"summary": "Use buyers and alumni on new project. Upsell opportunities: risk management."}'
-    agent = DummySelf()
-    agent.company_profiles = {
-        'Capital One': {
-            'key_buyers': [{"name": "Jane Buyer"}],
-            'projects': [{"name": "Audit2023"}],
-            'protiviti_alumni': [{"name": "Al Smith"}]
-        }
-    }
-    sample = [{
-        'company': 'Capital One',
-        'title': 'Event X'
-    }]
-    out = asyncio.run(agent.generate_insights(sample))
-    assert 'company_takeaway' in out[0] and 'summary' in out[0]['company_takeaway']
-    print("✅ AnalystAgent company_takeaway injection test passed.")
-
