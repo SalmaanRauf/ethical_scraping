@@ -130,8 +130,6 @@ class IntentResolver:
             prompt = self._create_intent_prompt(user_input, context)
             
             # Get LLM response
-            from semantic_kernel.functions.kernel_arguments import KernelArguments
-
             result = await kernel.invoke(
                 function_name="intent_resolver",
                 plugin_name="intent_plugin",
@@ -163,8 +161,9 @@ class IntentResolver:
         cleaned = cleaned.strip()
 
         # Remove wrapping quotes the model occasionally adds
-        if (cleaned.startswith("'") and cleaned.endswith("'")) or (
-            cleaned.startswith('"') and cleaned.endswith('"'))
+        if (
+            (cleaned.startswith("'") and cleaned.endswith("'"))
+            or (cleaned.startswith('"') and cleaned.endswith('"'))
         ):
             cleaned = cleaned[1:-1]
 
