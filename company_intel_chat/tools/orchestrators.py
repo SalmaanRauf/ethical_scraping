@@ -99,26 +99,22 @@ async def full_company_analysis(
         return section
 
     # Kick off all scopes concurrently
-    tasks: Dict[asyncio.Task, ScopeLiteral] = {}
-    for s in scopes:
-        t = asyncio.create_task(_fetch_scope(s))
-        tasks[t] = s
+    scope_tasks = [asyncio.create_task(_fetch_scope(s)) for s in scopes]
+    results = await asyncio.gather(*scope_tasks, return_exceptions=True)
 
-    # Collect sections as they complete
+    # Collect sections preserving scope order
     sections: Dict[str, GWBSSection] = {}
-    for fut in asyncio.as_completed(tasks.keys()):
-        scope_name = tasks[fut]
-        try:
-            sec = await fut
-            sections[scope_name] = sec
-        except Exception as fetch_err:
-            logger.error(f"Failed to fetch scope '{scope_name}': {fetch_err}")
+    for scope_name, result in zip(scopes, results):
+        if isinstance(result, Exception):
+            logger.error(f"Failed to fetch scope '{scope_name}': {result}")
             sections[scope_name] = GWBSSection(
                 scope=scope_name,
                 summary=f"(Failed to fetch {scope_name})",
                 citations=[],
-                audit={"error": f"{type(fetch_err).__name__}: {fetch_err}"},
+                audit={"error": f"{type(result).__name__}: {result}"},
             )
+        else:
+            sections[scope_name] = result
     # Send final summary progress
     if progress:
         try:

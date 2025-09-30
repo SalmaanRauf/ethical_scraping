@@ -167,19 +167,44 @@ class BingDataExtractionAgent:
 
     @staticmethod
     def _extract_citations(msg) -> List[Dict[str, str]]:
-        """
-        Extract citations from the tool's citation annotations.
-        Returns a list of dicts with 'title' and 'url' keys.
-        """
+        """Collect citations from both legacy and current Azure SDK shapes."""
         citations: List[Dict[str, str]] = []
+        seen_urls = set()
+
+        def _add_citation(title: Optional[str], url: Optional[str]) -> None:
+            if not url:
+                return
+            if not url.lower().startswith(("http://", "https://")):
+                return
+            if url in seen_urls:
+                return
+            citations.append({"title": title or url, "url": url})
+            seen_urls.add(url)
+
+        # Modern SDK: annotations list with nested citations
         for annotation in getattr(msg, "annotations", []) or []:
-            if hasattr(annotation, "citations"):
-                for citation in annotation.citations:
-                    if hasattr(citation, "title") and hasattr(citation, "url"):
-                        citations.append({
-                            "title": citation.title,
-                            "url": citation.url
-                        })
+            try:
+                nested = getattr(annotation, "citations", None)
+                if nested:
+                    for citation in nested:
+                        _add_citation(getattr(citation, "title", None), getattr(citation, "url", None))
+                    continue
+
+                url_citation = getattr(annotation, "url_citation", None)
+                if url_citation:
+                    _add_citation(getattr(url_citation, "title", None), getattr(url_citation, "url", None))
+            except Exception:
+                continue
+
+        # Legacy SDK: url_citation_annotations collection
+        for annotation in getattr(msg, "url_citation_annotations", []) or []:
+            try:
+                url_citation = getattr(annotation, "url_citation", None)
+                if url_citation:
+                    _add_citation(getattr(url_citation, "title", None), getattr(url_citation, "url", None))
+            except Exception:
+                continue
+
         return citations
 
     def _run_agent_task(self, user_prompt: str) -> Dict[str, Any]:
