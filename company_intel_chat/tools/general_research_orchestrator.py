@@ -48,7 +48,7 @@ class GeneralResearchOrchestrator:
             return summary, citations
             
         except Exception as e:
-            logger.error(f"General research failed: {e}")
+            logger.exception("General research failed during strategy '%s' for target '%s'", strategy if 'strategy' in locals() else "unknown", target)
             return f"I couldn't complete the research on '{target}'. Please try rephrasing your question.", []
     
     def _determine_research_strategy(self, target: str, parameters: Dict[str, Any]) -> str:

@@ -164,11 +164,12 @@ class BingDataExtractionAgent:
         Execute a single agent task with the Grounding with Bing Search tool.
         Returns a dict with 'summary', 'citations_md', and 'audit' keys.
         """
-        with AIProjectClient(
-            self.project_endpoint,
-            credential=self.credential,
-        ) as project_client:
-            agents_client = project_client.agents
+        try:
+            with AIProjectClient(
+                self.project_endpoint,
+                credential=self.credential,
+            ) as project_client:
+                agents_client = project_client.agents
 
             # Create agent
             agent = self._create_agent(agents_client)
@@ -194,7 +195,7 @@ class BingDataExtractionAgent:
             # Get assistant's message
             messages = agents_client.messages.list(thread_id=thread.id)
             assistant_msg = None
-            for msg in messages.data:
+            for msg in messages:
                 if msg.role == MessageRole.ASSISTANT:
                     assistant_msg = msg
                     break
@@ -220,7 +221,7 @@ class BingDataExtractionAgent:
                 )
                 if follow_up_run.status == "completed":
                     follow_up_messages = agents_client.messages.list(thread_id=thread.id)
-                    for msg in follow_up_messages.data:
+                    for msg in follow_up_messages:
                         if msg.role == MessageRole.ASSISTANT and msg.id != assistant_msg.id:
                             citations = self._extract_citations(msg)
                             break
@@ -230,14 +231,17 @@ class BingDataExtractionAgent:
             if citations:
                 citations_md = "\n".join([f"- [{c['title']}]({c['url']})" for c in citations])
 
-            return {
-                "summary": body,
-                "citations_md": citations_md,
-                "audit": {
-                    "citation_count": len(citations),
-                    "search_queries": [user_prompt]
+                return {
+                    "summary": body,
+                    "citations_md": citations_md,
+                    "audit": {
+                        "citation_count": len(citations),
+                        "search_queries": [user_prompt]
+                    }
                 }
-            }
+        except Exception as exc:
+            logger.exception("Bing agent task failed for prompt '%s'", user_prompt)
+            raise
 
     # -----------------------
     # Public API methods
