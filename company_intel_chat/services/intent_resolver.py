@@ -12,6 +12,8 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
+
+from semantic_kernel.functions.kernel_arguments import KernelArguments
 from services.conversation_manager import ConversationContext, QueryRouter, QueryType
 
 logger = logging.getLogger(__name__)
@@ -128,10 +130,12 @@ class IntentResolver:
             prompt = self._create_intent_prompt(user_input, context)
             
             # Get LLM response
+            from semantic_kernel.functions.kernel_arguments import KernelArguments
+
             result = await kernel.invoke(
                 function_name="intent_resolver",
                 plugin_name="intent_plugin",
-                arguments={"input": prompt}
+                arguments=KernelArguments(input=prompt)
             )
             
             # Parse the response

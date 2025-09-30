@@ -401,9 +401,21 @@ async def enhanced_user_request_handler(
             await progress("🔍 Analyzing your request...")
         
         intent_type, intent_plan = await enhanced_router.route_enhanced(user_input, context)
-        
+
         logger.info(f"Resolved intent: {intent_type.value} with {len(intent_plan.tasks)} tasks")
-        
+
+        if not intent_plan.tasks:
+            logger.info("No tasks produced by intent resolution; requesting clarification")
+            return {
+                "type": "clarification",
+                "summary": "I couldn't determine the right action from that request. Could you rephrase or provide more detail?",
+                "citations": [],
+                "execution_time": 0.0,
+                "intent_type": intent_type.value,
+                "confidence": intent_plan.confidence,
+                "reasoning": intent_plan.reasoning,
+            }
+
         # Execute tasks
         if progress:
             await progress(f"🚀 Executing {len(intent_plan.tasks)} task(s)...")
