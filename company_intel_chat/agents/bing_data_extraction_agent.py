@@ -126,6 +126,29 @@ class BingDataExtractionAgent:
         return re.sub(r"https?://\S+", "[link omitted]", text)
 
     @staticmethod
+    def _role_equals(role_obj: Any, expected: str) -> bool:
+        """Compare Azure agent message roles defensively."""
+        if role_obj is None:
+            return False
+
+        # Strings (current SDK) -> case-insensitive compare
+        if isinstance(role_obj, str):
+            return role_obj.strip().lower() == expected
+
+        # Enum values -> compare value/ name
+        try:
+            if hasattr(role_obj, "value") and isinstance(role_obj.value, str):
+                if role_obj.value.strip().lower() == expected:
+                    return True
+        except Exception:
+            pass
+
+        try:
+            return role_obj == MessageRole[expected.upper()]
+        except Exception:
+            return False
+
+    @staticmethod
     def _extract_text(msg) -> str:
         """
         Collect the assistant's text parts and strip any inline raw URLs.
@@ -196,7 +219,7 @@ class BingDataExtractionAgent:
             messages = agents_client.messages.list(thread_id=thread.id)
             assistant_msg = None
             for msg in messages:
-                if msg.role == MessageRole.ASSISTANT:
+                if self._role_equals(getattr(msg, "role", None), "assistant"):
                     assistant_msg = msg
                     break
 
@@ -222,7 +245,7 @@ class BingDataExtractionAgent:
                 if follow_up_run.status == "completed":
                     follow_up_messages = agents_client.messages.list(thread_id=thread.id)
                     for msg in follow_up_messages:
-                        if msg.role == MessageRole.ASSISTANT and msg.id != assistant_msg.id:
+                        if self._role_equals(getattr(msg, "role", None), "assistant") and msg.id != assistant_msg.id:
                             citations = self._extract_citations(msg)
                             break
 
