@@ -165,7 +165,7 @@ class BingDataExtractionAgent:
         Returns a dict with 'summary', 'citations_md', and 'audit' keys.
         """
         with AIProjectClient(
-            endpoint=self.project_endpoint,
+            self.project_endpoint,
             credential=self.credential,
         ) as project_client:
             agents_client = project_client.agents

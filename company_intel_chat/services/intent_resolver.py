@@ -139,18 +139,53 @@ class IntentResolver:
             )
             
             # Parse the response
-            response_text = str(result.value).strip()
-            if response_text.startswith('```json'):
-                response_text = response_text[7:]
-            if response_text.endswith('```'):
-                response_text = response_text[:-3]
-            
-            json_data = json.loads(response_text)
+            response_text = str(result.value)
+            logger.error("RAW LLM RESPONSE:\n%s", response_text)
+            json_data = self._parse_llm_response(response_text)
             return IntentPlan.from_json(json_data)
             
         except Exception as e:
             logger.error(f"LLM intent resolution error: {e}")
             return None
+
+    def _parse_llm_response(self, response_text: str) -> Dict[str, Any]:
+        """Extract JSON object from LLM response with defensive cleanup."""
+        cleaned = response_text.strip()
+
+        # Trim fenced code blocks
+        if cleaned.startswith('```json'):
+            cleaned = cleaned[7:]
+        if cleaned.startswith('```'):
+            cleaned = cleaned[3:]
+        if cleaned.endswith('```'):
+            cleaned = cleaned[:-3]
+
+        cleaned = cleaned.strip()
+
+        # Remove wrapping quotes the model occasionally adds
+        if (cleaned.startswith("'") and cleaned.endswith("'")) or (
+            cleaned.startswith('"') and cleaned.endswith('"'))
+        ):
+            cleaned = cleaned[1:-1]
+
+        cleaned = cleaned.strip()
+        logger.debug(f"Intent resolver raw response after cleanup: {cleaned}")
+
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            # Fallback to extracting first JSON object substring
+            start = cleaned.find('{')
+            end = cleaned.rfind('}')
+            if start != -1 and end != -1 and end > start:
+                candidate = cleaned[start:end + 1]
+                try:
+                    return json.loads(candidate)
+                except json.JSONDecodeError as inner:
+                    logger.error(f"Failed to parse candidate JSON: {inner}. Candidate: {candidate}")
+                    raise
+            logger.error(f"Unable to locate JSON object in LLM response: {cleaned}")
+            raise
     
     def _create_intent_prompt(self, user_input: str, context: ConversationContext) -> str:
         """Create the prompt for LLM intent resolution."""
