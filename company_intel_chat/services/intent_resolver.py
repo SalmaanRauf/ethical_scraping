@@ -58,11 +58,13 @@ class IntentPlan:
     def from_json(cls, json_data: Dict[str, Any]) -> "IntentPlan":
         """Create IntentPlan from JSON data."""
         try:
-            intent_type = IntentType(json_data.get("intent_type", "clarification"))
+            intent_type_raw = json_data.get("intent_type", "clarification")
+            intent_type = cls._coerce_intent_type(intent_type_raw)
             tasks = []
             for task_data in json_data.get("tasks", []):
+                task_type_raw = task_data.get("task_type", "general_research")
                 task = Task(
-                    task_type=TaskType(task_data.get("task_type", "general_research")),
+                    task_type=cls._coerce_task_type(task_type_raw),
                     target=task_data.get("target", ""),
                     parameters=task_data.get("parameters", {}),
                     priority=task_data.get("priority", 1)
@@ -79,6 +81,40 @@ class IntentPlan:
         except Exception as e:
             logger.error(f"Failed to parse IntentPlan from JSON: {e}")
             return cls(intent_type=IntentType.CLARIFICATION)
+
+    @staticmethod
+    def _coerce_intent_type(value: Any) -> IntentType:
+        """Convert arbitrary intent type strings to IntentType enum."""
+        if isinstance(value, IntentType):
+            return value
+
+        text = str(value or "clarification").strip()
+        # Try by value match (case insensitive)
+        for member in IntentType:
+            if member.value.lower() == text.lower():
+                return member
+        # Try by enum name (case insensitive)
+        try:
+            return IntentType[text.upper()]
+        except Exception:
+            logger.warning(f"Unknown intent_type '{value}', defaulting to CLARIFICATION")
+            return IntentType.CLARIFICATION
+
+    @staticmethod
+    def _coerce_task_type(value: Any) -> TaskType:
+        """Convert arbitrary task type strings to TaskType enum."""
+        if isinstance(value, TaskType):
+            return value
+
+        text = str(value or "general_research").strip()
+        for member in TaskType:
+            if member.value.lower() == text.lower():
+                return member
+        try:
+            return TaskType[text.upper()]
+        except Exception:
+            logger.warning(f"Unknown task_type '{value}', defaulting to GENERAL_RESEARCH")
+            return TaskType.GENERAL_RESEARCH
 
 class IntentResolver:
     """Resolves user intent using LLM with rule-based fallback."""
