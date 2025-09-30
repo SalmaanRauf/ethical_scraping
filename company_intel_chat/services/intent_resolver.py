@@ -14,6 +14,8 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from semantic_kernel.functions.kernel_arguments import KernelArguments
+from semantic_kernel.contents.chat_message_content import ChatMessageContent
+from semantic_kernel.contents.text_content import TextContent
 from services.conversation_manager import ConversationContext, QueryRouter, QueryType
 
 logger = logging.getLogger(__name__)
@@ -137,14 +139,61 @@ class IntentResolver:
             )
             
             # Parse the response
-            response_text = str(result.value)
-            logger.error("RAW LLM RESPONSE:\n%s", response_text)
-            json_data = self._parse_llm_response(response_text)
+            raw_payload = self._extract_response_text(result)
+            if raw_payload is None:
+                raise ValueError("Intent resolver received empty response from LLM")
+
+            logger.debug("Intent resolver raw payload before parsing: %s", raw_payload)
+            json_data = self._parse_llm_response(raw_payload)
             return IntentPlan.from_json(json_data)
             
         except Exception as e:
             logger.error(f"LLM intent resolution error: {e}")
             return None
+
+    def _extract_response_text(self, result) -> Optional[str]:
+        """Extract textual content from Semantic Kernel invoke result."""
+        value = getattr(result, "value", result)
+
+        text = self._extract_text(value)
+        if text:
+            return text.strip()
+        return None
+
+    def _extract_text(self, value) -> Optional[str]:
+        """Recursively extract text from SK content objects."""
+        if value is None:
+            return None
+
+        if isinstance(value, str):
+            return value
+
+        if isinstance(value, TextContent):
+            return value.text
+
+        if isinstance(value, ChatMessageContent):
+            if getattr(value, "content", None):
+                return value.content
+            for item in getattr(value, "items", []) or []:
+                extracted = self._extract_text(item)
+                if extracted:
+                    return extracted
+            return None
+
+        if isinstance(value, (list, tuple)):
+            for entry in value:
+                extracted = self._extract_text(entry)
+                if extracted:
+                    return extracted
+            return None
+
+        # Some SK types expose `.text` or `.content` attributes
+        for attr in ("text", "content"):
+            attr_value = getattr(value, attr, None)
+            if isinstance(attr_value, str):
+                return attr_value
+
+        return None
 
     def _parse_llm_response(self, response_text: str) -> Dict[str, Any]:
         """Extract JSON object from LLM response with defensive cleanup."""
