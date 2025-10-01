@@ -265,18 +265,22 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
         elif response_type == "mixed_request":
             sections = response.get("sections", [])
             for section in sections:
-                task_type = section.get("task_type", "")
+                raw_task_type = section.get("task_type") or ""
+                task_type = raw_task_type.strip().lower()
                 if task_type == "company_briefing":
-                    payload = {
+                    briefing_payload = section.get("briefing") or {
                         "company": section.get("target") or response.get("company"),
                         "summary": section.get("content", ""),
                         "events": section.get("events", []),
                         "raw_gwbs": section.get("raw_gwbs", []),
                     }
-                    await _present_company_briefing(payload)
+                    if not briefing_payload.get("company"):
+                        briefing_payload["company"] = response.get("company", "Company")
+                    await _present_company_briefing(briefing_payload)
                     await _send_sources(section.get("citations", []))
                 else:
-                    header = f"**{task_type.replace('_', ' ').title()} - {section.get('target', response.get('company', 'Unknown'))}**"
+                    display_task = raw_task_type.replace('_', ' ').title() if raw_task_type else "Section"
+                    header = f"**{display_task} - {section.get('target', response.get('company', 'Unknown'))}**"
                     content = section.get("content", "")
                     if content:
                         await cl.Message(f"{header}\n\n{content}").send()
