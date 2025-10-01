@@ -21,7 +21,6 @@ from services.conversation_manager import ConversationContext, QueryRouter, Anal
 from services.follow_up_handler import FollowUpHandler
 from services.session_manager import session_manager
 from models.schemas import CompanyRef
-from services.intent_resolver import TaskType
 from tools import orchestrators as ors
 from config.config import Config as AppConfig
 
@@ -123,13 +122,13 @@ async def handle_error(error: Exception, context: str, user_message: str = "Sorr
 async def present_enhanced_response(response: Dict[str, Any]) -> None:
     """
     Present enhanced system response to the user.
-
+    
     Args:
         response: Formatted response from enhanced system
     """
     try:
         response_type = response.get("type", "unknown")
-
+        
         if response_type == "error":
             error_msg = response.get("error", "Unknown error")
             details = response.get("details", [])
@@ -138,8 +137,8 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
                 error_text += f"\n\n**Details**:\n" + "\n".join([f"• {detail}" for detail in details])
             await cl.Message(error_text).send()
             return
-
-        async def _send_sources(citations: List[Dict[str, str]], heading: str = "Sources") -> None:
+        
+        async def _send_sources(citations, heading="Sources"):
             if not citations:
                 return
             lines = [f"**{heading}:**"]
@@ -149,144 +148,141 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
                 lines.append(f"• [{title}]({url})")
             await cl.Message("\n".join(lines)).send()
 
-        async def _send_company_briefing(payload: Dict[str, Any]) -> None:
+        async def _present_events(company: str, events: List[Dict[str, Any]], summary: str = ""):
+            if not events:
+                return
+            lines = [f"# 📊 {company} — Comprehensive Analysis Results", ""]
+            if summary:
+                lines.append(f"**Executive Summary:** {summary}")
+                lines.append("")
+            lines.append(f"Identified {len(events)} significant event(s) requiring attention.")
+            lines.append("")
+
+            for idx, event in enumerate(events[:10], 1):
+                title = event.get("title", f"Event #{idx}")
+                insights = event.get("insights", {})
+                citations = event.get("citations", [])
+
+                lines.append(f"## 🔥 Event #{idx}: {title}")
+                lines.append("")
+
+                if isinstance(insights, dict):
+                    what = insights.get("what_happened", "")
+                    why = insights.get("why_it_matters", "")
+                    consulting_angle = insights.get("consulting_angle", "")
+                    if what:
+                        lines.append(f"**What Happened:** {what}")
+                        lines.append("")
+                    if why:
+                        lines.append(f"**Why It Matters:** {why}")
+                        lines.append("")
+                    if consulting_angle:
+                        lines.append(f"**🎯 Consulting Angle:** {consulting_angle}")
+                        lines.append("")
+
+                    detail_pairs = []
+                    for key in ("need_type", "service_line", "urgency", "priority", "timeline"):
+                        value = insights.get(key)
+                        if value:
+                            detail_pairs.append((key.replace("_", " ").title(), value))
+                    if detail_pairs:
+                        lines.append("**📈 Business Impact:**")
+                        for label, value in detail_pairs:
+                            lines.append(f"- **{label}:** {value}")
+                        lines.append("")
+
+                    categories = insights.get("service_categories")
+                    if categories and isinstance(categories, list):
+                        lines.append(f"**🔧 Service Categories:** {', '.join(categories)}")
+                        lines.append("")
+
+                    industry_context = insights.get("industry_overview")
+                    if industry_context:
+                        lines.append(f"**🌐 Industry Context:** {industry_context}")
+                        lines.append("")
+
+                    source_urls = insights.get("source_urls")
+                    if source_urls and isinstance(source_urls, list):
+                        lines.append("**📚 Sources:**")
+                        for url in source_urls[:10]:
+                            lines.append(f"- {url}")
+                        lines.append("")
+
+                if citations:
+                    lines.append("**📖 Additional Sources:**")
+                    for citation in citations[:10]:
+                        title = citation.get("title", citation.get("url", "Source"))
+                        url = citation.get("url", "#")
+                        lines.append(f"- [{title}]({url})")
+                    lines.append("")
+
+                lines.append("---")
+                lines.append("")
+
+            await cl.Message("\n".join(lines)).send()
+
+        async def _present_raw_gwbs(company: str, raw_sections: List[Dict[str, Any]]):
+            if not raw_sections:
+                return
+            lines = [f"# 🔍 Raw Research Results for {company}", "", "## Grounding with Bing Search (GWBS) Findings", ""]
+            for section in raw_sections:
+                title = section.get("title") or section.get("scope", "").replace("_", " ").title()
+                summary = section.get("summary", "")
+                citations = section.get("citations", [])
+
+                lines.append(f"### {title}")
+                lines.append("")
+                if summary:
+                    lines.append(summary)
+                    lines.append("")
+                if citations:
+                    lines.append("**Sources:**")
+                    for citation in citations[:10]:
+                        cite_title = citation.get("title", citation.get("url", "Source"))
+                        cite_url = citation.get("url", "#")
+                        lines.append(f"- [{cite_title}]({cite_url})")
+                    lines.append("")
+
+            await cl.Message("\n".join(lines)).send()
+
+        async def _present_company_briefing(payload: Dict[str, Any]) -> None:
             company = payload.get("company", "Company")
             summary = payload.get("summary", "")
-            gwbs_sections = payload.get("gwbs_sections", [])
+            raw_gwbs = payload.get("raw_gwbs", [])
             events = payload.get("events", [])
 
-            if gwbs_sections:
-                lines = [f"# 🔍 Raw Research Results for {company}", "", "## Grounding with Bing Search (GWBS) Findings", ""]
-                for section in gwbs_sections:
-                    title = section.get("title") or section.get("scope", "").replace("_", " ").title()
-                    section_summary = section.get("summary", "")
-                    citations = section.get("citations", [])
+            await _present_raw_gwbs(company, raw_gwbs)
 
-                    lines.append(f"### {title}")
-                    lines.append("")
-                    if section_summary:
-                        lines.append(section_summary)
-                        lines.append("")
-                    if citations:
-                        lines.append("**Sources:**")
-                        for cite in citations:
-                            cite_title = cite.get("title", cite.get("url", "Source"))
-                            cite_url = cite.get("url", "#")
-                            lines.append(f"- [{cite_title}]({cite_url})")
-                        lines.append("")
-
-                await cl.Message("\n".join(lines)).send()
-
-            if events:
-                out_lines = [f"# 📊 {company} — Comprehensive Analysis Results", ""]
-                if summary:
-                    out_lines.append(f"**Executive Summary:** {summary}")
-                    out_lines.append("")
-                out_lines.append(f"Identified {len(events)} significant event(s) requiring attention.")
-                out_lines.append("")
-
-                for idx, event in enumerate(events[:10], 1):
-                    title = event.get("title", f"Event #{idx}")
-                    insights = event.get("insights", {})
-                    citations = event.get("citations", [])
-
-                    out_lines.append(f"## 🔥 Event #{idx}: {title}")
-                    out_lines.append("")
-
-                    what = insights.get("what_happened", "") if isinstance(insights, dict) else ""
-                    why = insights.get("why_it_matters", "") if isinstance(insights, dict) else ""
-                    consulting_angle = insights.get("consulting_angle", "") if isinstance(insights, dict) else ""
-                    business_impact = []
-                    if isinstance(insights, dict):
-                        for key in ("need_type", "service_line", "urgency", "priority", "timeline"):
-                            value = insights.get(key)
-                            if value:
-                                business_impact.append((key, value))
-                    service_categories = insights.get("service_categories", []) if isinstance(insights, dict) else []
-                    industry_context = insights.get("industry_overview", "") if isinstance(insights, dict) else ""
-                    source_urls = insights.get("source_urls", []) if isinstance(insights, dict) else []
-
-                    if what:
-                        out_lines.append(f"**What Happened:** {what}")
-                        out_lines.append("")
-                    if why:
-                        out_lines.append(f"**Why It Matters:** {why}")
-                        out_lines.append("")
-                    if consulting_angle:
-                        out_lines.append(f"**🎯 Consulting Angle:** {consulting_angle}")
-                        out_lines.append("")
-                    if business_impact:
-                        out_lines.append("**📈 Business Impact:**")
-                        for label, value in business_impact:
-                            out_lines.append(f"- **{label.replace('_', ' ').title()}:** {value}")
-                        out_lines.append("")
-                    if service_categories:
-                        out_lines.append(f"**🔧 Service Categories:** {', '.join(service_categories)}")
-                        out_lines.append("")
-                    if industry_context:
-                        out_lines.append(f"**🌐 Industry Context:** {industry_context}")
-                        out_lines.append("")
-                    if source_urls:
-                        out_lines.append("**📚 Sources:**")
-                        for url in source_urls[:10]:
-                            out_lines.append(f"- {url}")
-                        out_lines.append("")
-                    if citations:
-                        out_lines.append("**📖 Additional Sources:**")
-                        for cite in citations[:10]:
-                            cite_title = cite.get("title", cite.get("url", "Source"))
-                            cite_url = cite.get("url", "#")
-                            out_lines.append(f"- [{cite_title}]({cite_url})")
-                        out_lines.append("")
-
-                    out_lines.append("---")
-                    out_lines.append("")
-
-                await cl.Message("\n".join(out_lines)).send()
-
-            elif summary:
+            if summary and not events:
                 await cl.Message(summary).send()
 
-            await _send_sources(payload.get("citations", []))
-
-        async def _send_general_section(section: Dict[str, Any]) -> None:
-            label = section.get("task_type", "General Research").replace("_", " ").title()
-            target = section.get("target") or section.get("topic")
-            header = f"**{label}" + (f" - {target}**" if target else "**")
-            summary = section.get("content") or section.get("summary", "")
-            message_lines = [header, ""]
-            if summary:
-                message_lines.append(summary)
-            await cl.Message("\n".join(message_lines)).send()
-            await _send_sources(section.get("citations", []))
+            await _present_events(company, events, summary)
 
         if response_type == "company_briefing":
-            briefing_payload = {
-                "company": response.get("company"),
-                "summary": response.get("summary"),
-                "events": response.get("events", []),
-                "gwbs_sections": response.get("gwbs_sections", []),
-                "citations": response.get("citations", []),
-            }
-            await _send_company_briefing(briefing_payload)
+            await _present_company_briefing(response)
+            await _send_sources(response.get("citations", []))
 
         elif response_type == "mixed_request":
             sections = response.get("sections", [])
-            for section in sections or []:
+            for section in sections:
                 task_type = section.get("task_type", "")
-                if task_type == TaskType.COMPANY_BRIEFING.value:
-                    briefing_payload = section.get("briefing") or {}
-                    if not briefing_payload:
-                        briefing_payload = {
-                            "company": section.get("target"),
-                            "summary": section.get("content", ""),
-                            "events": section.get("events", []),
-                            "gwbs_sections": section.get("gwbs_sections", []),
-                            "citations": section.get("citations", []),
-                        }
-                    await _send_company_briefing(briefing_payload)
+                if task_type == "company_briefing":
+                    payload = {
+                        "company": section.get("target") or response.get("company"),
+                        "summary": section.get("content", ""),
+                        "events": section.get("events", []),
+                        "raw_gwbs": section.get("raw_gwbs", []),
+                    }
+                    await _present_company_briefing(payload)
+                    await _send_sources(section.get("citations", []))
                 else:
-                    await _send_general_section(section)
+                    header = f"**{task_type.replace('_', ' ').title()} - {section.get('target', response.get('company', 'Unknown'))}**"
+                    content = section.get("content", "")
+                    if content:
+                        await cl.Message(f"{header}\n\n{content}").send()
+                    await _send_sources(section.get("citations", []))
+
+            await _send_sources(response.get("citations", []))
 
         else:
             summary = response.get("summary", "")
@@ -294,25 +290,14 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
                 await cl.Message(summary).send()
 
             sections = response.get("sections", [])
-            if isinstance(sections, list):
-                for section in sections:
-                    await _send_general_section(section)
+            for section in sections:
+                header = f"**{section.get('task_type', 'Section').replace('_', ' ').title()} - {section.get('target', response.get('company', 'Unknown'))}**"
+                content = section.get("content", "")
+                if content:
+                    await cl.Message(f"{header}\n\n{content}").send()
+                await _send_sources(section.get("citations", []))
 
-            events = response.get("events", [])
-            if events:
-                for event in events:
-                    title = event.get("title", "Event")
-                    insights = event.get("insights", {})
-                    event_text = f"**{title}**"
-                    if isinstance(insights, dict):
-                        what = insights.get("what_happened", "")
-                        why = insights.get("why_it_matters", "")
-                        if what:
-                            event_text += f"\n\n**What happened**: {what}"
-                        if why:
-                            event_text += f"\n\n**Why it matters**: {why}"
-                    await cl.Message(event_text).send()
-
+            await _present_events(response.get("company", "Company"), response.get("events", []), summary)
             await _send_sources(response.get("citations", []))
 
         # Present metadata
@@ -326,7 +311,7 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
                 metadata_text += f" | 🎯 **Confidence**: {confidence:.1%}"
             if metadata_text:
                 await cl.Message(metadata_text).send()
-
+        
     except Exception as e:
         logger.error(f"Error presenting enhanced response: {e}")
         await cl.Message("✅ Response generated successfully.").send()

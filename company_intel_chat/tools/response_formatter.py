@@ -58,22 +58,29 @@ class ResponseFormatter:
             return self._format_generic_response(execution_result)
         
         # Format the briefing data
-        briefing_payload = self._build_briefing_payload(
-            briefing,
-            execution_result.all_citations,
-        )
+        formatted_sections = []
+        for scope, section_summary in (briefing.sections or {}).items():
+            if not section_summary:
+                continue
+            formatted_sections.append(
+                {
+                    "task_type": scope,
+                    "target": briefing.company.name,
+                    "content": section_summary,
+                }
+            )
 
         response = {
             "type": "company_briefing",
-            "company": briefing_payload["company"],
-            "summary": briefing_payload["summary"],
-            "events": briefing_payload["events"],
-            "sections": briefing_payload["section_summaries"],
-            "gwbs_sections": briefing_payload["gwbs_sections"],
-            "citations": briefing_payload["citations"],
-            "execution_time": execution_result.execution_time,
+            "company": briefing.company.name,
+            "summary": briefing.summary,
+            "events": [self._format_event(event) for event in briefing.events],
+            "sections": formatted_sections,
+            "raw_gwbs": self._serialize_gwbs_sections(briefing),
+            "citations": self._format_citations(execution_result.all_citations),
+            "execution_time": execution_result.execution_time
         }
-
+        
         return response
     
     def _format_general_research_response(self, execution_result: ExecutionResult) -> Dict[str, Any]:
@@ -91,14 +98,11 @@ class ResponseFormatter:
         
         response = {
             "type": "general_research",
-            "topic": research_result.target,
             "summary": summary,
-            "citations": self._format_citations(
-                (research_result.data or {}).get("citations") or execution_result.all_citations
-            ),
-            "execution_time": execution_result.execution_time,
+            "citations": self._format_citations(execution_result.all_citations),
+            "execution_time": execution_result.execution_time
         }
-
+        
         return response
     
     def _format_mixed_request_response(self, execution_result: ExecutionResult) -> Dict[str, Any]:
@@ -123,20 +127,17 @@ class ResponseFormatter:
             }
             
             if result.task_type == TaskType.COMPANY_BRIEFING and hasattr(result.data, 'summary'):
-                briefing_payload = self._build_briefing_payload(result.data, result.citations)
-                section["content"] = briefing_payload["summary"]
-                section["briefing"] = briefing_payload
+                section["content"] = result.data.summary
+                section["events"] = [self._format_event(event) for event in result.data.events]
+                section["raw_gwbs"] = self._serialize_gwbs_sections(result.data)
             elif isinstance(result.data, dict):
                 if 'summary' in result.data:
                     section["content"] = result.data['summary']
                 elif 'answer' in result.data:
                     section["content"] = result.data['answer']
-
-            if result.citations:
-                section["citations"] = self._format_citations(result.citations)
-
+            
             response["sections"].append(section)
-
+        
         return response
     
     def _format_comparison_response(self, execution_result: ExecutionResult) -> Dict[str, Any]:
@@ -218,113 +219,64 @@ class ResponseFormatter:
     
     def _format_event(self, event) -> Dict[str, Any]:
         """Format an analysis event."""
-        if hasattr(event, "dict"):
-            event_dict = event.dict()
+        if hasattr(event, 'dict'):
+            return event.dict()
         elif isinstance(event, dict):
-            event_dict = dict(event)
+            return event
         else:
-            return {"title": str(event), "insights": {}, "citations": []}
-
-        title = event_dict.get("title") or event_dict.get("headline") or "Untitled"
-        insights = event_dict.get("insights") if isinstance(event_dict.get("insights"), dict) else {}
-        citations = self._serialize_citations(event_dict.get("citations"))
-        meta = event_dict.get("meta")
-        if meta is not None and hasattr(meta, "dict"):
-            meta = meta.dict()
-
-        formatted = {
-            "title": title,
-            "insights": insights,
-            "citations": citations,
-        }
-
-        if meta is not None:
-            formatted["meta"] = meta
-
-        return formatted
-
+            return {"title": str(event), "insights": {}}
+    
     def _format_citations(self, citations: List[Citation]) -> List[Dict[str, str]]:
         """Format citations for display."""
         formatted_citations = []
         seen_urls = set()
-
-        for citation in self._serialize_citations(citations):
-            url = citation.get("url")
-            if not url or url in seen_urls:
-                continue
-            formatted_citations.append(citation)
-            seen_urls.add(url)
-
+        
+        for citation in citations:
+            if citation.url not in seen_urls:
+                formatted_citations.append({
+                    "title": citation.title or citation.url,
+                    "url": citation.url
+                })
+                seen_urls.add(citation.url)
+        
         return formatted_citations
 
-    def _serialize_citations(self, citations: Optional[Any]) -> List[Dict[str, str]]:
-        serialized: List[Dict[str, str]] = []
-        if not citations:
-            return serialized
+    def _serialize_gwbs_sections(self, briefing: Briefing) -> List[Dict[str, Any]]:
+        serialized: List[Dict[str, Any]] = []
+        raw_sections = getattr(briefing, "gwbs", {}) or {}
 
-        for citation in citations:
-            title: Optional[str] = None
-            url: Optional[str] = None
-            if isinstance(citation, dict):
-                url = citation.get("url")
-                title = citation.get("title")
-            else:
-                url = getattr(citation, "url", None)
-                title = getattr(citation, "title", None)
-
-            if not url:
-                continue
-            serialized.append({"title": title or url, "url": url})
-
-        return serialized
-
-    def _build_briefing_payload(self, briefing: Briefing, citations: List[Citation]) -> Dict[str, Any]:
-        company_name = getattr(briefing.company, "name", "Company")
-
-        section_summaries = []
-        for scope, summary in (briefing.sections or {}).items():
-            if not summary:
-                continue
-            section_summaries.append(
-                {
-                    "scope": scope,
-                    "title": scope.replace("_", " ").title(),
-                    "content": summary,
-                }
-            )
-
-        gwbs_sections = []
-        raw_gwbs = getattr(briefing, "gwbs", {}) or {}
-        for scope, section in raw_gwbs.items():
+        for scope, section in raw_sections.items():
             if isinstance(section, dict):
                 summary = section.get("summary", "")
-                section_citations = self._serialize_citations(section.get("citations"))
+                citations = section.get("citations", [])
                 audit = section.get("audit", {})
             else:
                 summary = getattr(section, "summary", "")
-                section_citations = self._serialize_citations(getattr(section, "citations", []))
+                citations = getattr(section, "citations", [])
                 audit = getattr(section, "audit", {}) or {}
 
-            gwbs_sections.append(
+            formatted_citations: List[Dict[str, str]] = []
+            for citation in citations or []:
+                if isinstance(citation, dict):
+                    url = citation.get("url")
+                    title = citation.get("title")
+                else:
+                    url = getattr(citation, "url", None)
+                    title = getattr(citation, "title", None)
+                if url:
+                    formatted_citations.append({"title": title or url, "url": url})
+
+            serialized.append(
                 {
                     "scope": scope,
                     "title": scope.replace("_", " ").title(),
                     "summary": summary,
-                    "citations": section_citations,
+                    "citations": formatted_citations,
                     "audit": audit,
                 }
             )
 
-        formatted_events = [self._format_event(event) for event in briefing.events]
-
-        return {
-            "company": company_name,
-            "summary": briefing.summary,
-            "events": formatted_events,
-            "section_summaries": section_summaries,
-            "gwbs_sections": gwbs_sections,
-            "citations": self._format_citations(citations),
-        }
+        return serialized
 
 # Global response formatter instance
 response_formatter = ResponseFormatter()

@@ -89,18 +89,21 @@ class GeneralResearchOrchestrator:
     
     async def _execute_research_strategy(self, strategy: str, target: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Execute the research using the determined strategy."""
-        industry = parameters.get("industry")
-        location = parameters.get("location")
-        limit = parameters.get("limit", 10)
-        
+        industry = (parameters.get("industry") or "").strip() or None
+        location = self._infer_location(target, parameters.get("location"))
+        limit = self._normalize_limit(parameters.get("limit"))
+
         if strategy == "market_overview_location":
             return self.bing_agent.search_financial_companies_by_location(location, limit)
-        
+
         elif strategy == "market_overview_industry":
             return self.bing_agent.search_market_overview(industry, location, limit)
-        
+
         elif strategy == "market_overview_general":
-            return self.bing_agent.search_market_rankings("companies", location, limit)
+            category = parameters.get("category")
+            if not category:
+                category = self._infer_category(target)
+            return self.bing_agent.search_market_rankings(category, location, limit)
         
         elif strategy == "industry_analysis":
             return self.bing_agent.search_industry_analysis(industry or target, location)
@@ -121,7 +124,7 @@ class GeneralResearchOrchestrator:
         
         else:  # general_topic
             return self.bing_agent.search_general_topic(target)
-    
+
     def _extract_company_from_target(self, target: str) -> Optional[str]:
         """Extract company name from target string for competitor analysis."""
         # Simple extraction - look for common patterns
@@ -138,6 +141,40 @@ class GeneralResearchOrchestrator:
             return match.group(1).strip()
         
         return None
+
+    def _normalize_limit(self, value: Optional[Any], default: int = 10) -> int:
+        if value is None:
+            return default
+        try:
+            limit = int(value)
+            return limit if limit > 0 else default
+        except (TypeError, ValueError):
+            return default
+
+    def _infer_location(self, target: str, explicit_location: Optional[Any]) -> Optional[str]:
+        if explicit_location:
+            return str(explicit_location).strip()
+
+        target_lower = target.lower()
+        if " united states" in target_lower or " in the us" in target_lower or " in us" in target_lower:
+            return "United States"
+        if " in europe" in target_lower:
+            return "Europe"
+        if " in asia" in target_lower:
+            return "Asia"
+        return None
+
+    def _infer_category(self, target: str) -> str:
+        text = target.lower()
+        if "bank holding" in text:
+            return "bank holding companies"
+        if "bank" in text:
+            return "banks"
+        if "insurance" in text:
+            return "insurance companies"
+        if "fintech" in text:
+            return "fintech companies"
+        return "companies"
     
     def _extract_citations(self, citations_md: str) -> List[Citation]:
         """Extract citations from markdown format."""

@@ -15,10 +15,12 @@ add them carefully with a try/except TypeError around create_agent.
 import logging
 import os
 import re
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from azure.ai.projects import AIProjectClient
 from azure.ai.agents.models import MessageRole, BingGroundingTool
+from azure.core.exceptions import ServiceResponseError
 from azure.identity import DefaultAzureCredential, EnvironmentCredential
 
 # Set up logger for this module
@@ -212,84 +214,136 @@ class BingDataExtractionAgent:
         Execute a single agent task with the Grounding with Bing Search tool.
         Returns a dict with 'summary', 'citations_md', and 'audit' keys.
         """
-        try:
-            with AIProjectClient(
-                self.project_endpoint,
-                credential=self.credential,
-            ) as project_client:
-                agents_client = project_client.agents
+        attempts = 2
+        last_error: Optional[Exception] = None
 
-            # Create agent
-            agent = self._create_agent(agents_client)
+        for attempt in range(1, attempts + 1):
+            agent = None
+            thread = None
+            try:
+                with AIProjectClient(
+                    self.project_endpoint,
+                    credential=self.credential,
+                ) as project_client:
+                    agents_client = project_client.agents
+                    result: Optional[Dict[str, Any]] = None
 
-            # Create thread
-            thread = agents_client.threads.create()
+                    try:
+                        agent = self._create_agent(agents_client)
+                        thread = agents_client.threads.create()
 
-            # Send user prompt
-            message = agents_client.messages.create(
-                thread_id=thread.id,
-                role=MessageRole.USER,
-                content=user_prompt,
-            )
+                        agents_client.messages.create(
+                            thread_id=thread.id,
+                            role=MessageRole.USER,
+                            content=user_prompt,
+                        )
 
-            # Run agent
-            run = agents_client.runs.create_and_process(
-                thread_id=thread.id, agent_id=agent.id
-            )
+                        run = agents_client.runs.create_and_process(
+                            thread_id=thread.id,
+                            agent_id=agent.id,
+                        )
 
-            if run.status == "failed":
-                raise RuntimeError(f"Bing grounding run failed: {run.last_error}")
+                        if run.status == "failed":
+                            raise RuntimeError(f"Bing grounding run failed: {run.last_error}")
 
-            # Get assistant's message
-            messages = agents_client.messages.list(thread_id=thread.id)
-            assistant_msg = None
-            for msg in messages:
-                if self._role_equals(getattr(msg, "role", None), "assistant"):
-                    assistant_msg = msg
-                    break
+                        messages = agents_client.messages.list(thread_id=thread.id)
+                        assistant_msg = None
+                        for msg in messages:
+                            if self._role_equals(getattr(msg, "role", None), "assistant"):
+                                assistant_msg = msg
+                                break
 
-            if not assistant_msg:
-                raise RuntimeError("No assistant message found")
+                        if not assistant_msg:
+                            raise RuntimeError("No assistant message found")
 
-            # Extract content
-            body = self._extract_text(assistant_msg)
-            citations = self._extract_citations(assistant_msg)
+                        body = self._extract_text(assistant_msg)
+                        citations = self._extract_citations(assistant_msg)
 
-            # Check if we got citations
-            if not citations:
-                logger.warning("No citations found, attempting corrective follow-up")
-                # One corrective follow-up
-                follow_up_msg = agents_client.messages.create(
-                    thread_id=thread.id,
-                    role=MessageRole.USER,
-                    content="Please provide sources for your previous response using the Grounding with Bing Search tool."
+                        if not citations:
+                            logger.warning("No citations found, attempting corrective follow-up")
+                            agents_client.messages.create(
+                                thread_id=thread.id,
+                                role=MessageRole.USER,
+                                content=(
+                                    "Please provide sources for your previous response using the "
+                                    "Grounding with Bing Search tool."
+                                ),
+                            )
+                            follow_up_run = agents_client.runs.create_and_process(
+                                thread_id=thread.id,
+                                agent_id=agent.id,
+                            )
+                            if follow_up_run.status == "completed":
+                                follow_up_messages = agents_client.messages.list(thread_id=thread.id)
+                                for msg in follow_up_messages:
+                                    if (
+                                        self._role_equals(getattr(msg, "role", None), "assistant")
+                                        and msg.id != assistant_msg.id
+                                    ):
+                                        citations = self._extract_citations(msg)
+                                        break
+
+                        citations_md = ""
+                        if citations:
+                            citations_md = "\n".join([f"- [{c['title']}]({c['url']})" for c in citations])
+
+                        result = {
+                            "summary": body or "",
+                            "citations_md": citations_md,
+                            "audit": {
+                                "citation_count": len(citations),
+                                "search_queries": [user_prompt],
+                            },
+                        }
+                    finally:
+                        if thread is not None:
+                            try:
+                                delete_thread_method = getattr(agents_client.threads, "delete", None)
+                                if callable(delete_thread_method):
+                                    delete_thread_method(thread.id)
+                                else:
+                                    legacy_delete = getattr(agents_client, "delete_thread", None)
+                                    if callable(legacy_delete):
+                                        legacy_delete(thread.id)
+                            except Exception as cleanup_err:
+                                logger.debug(
+                                    "Failed to delete thread %s: %s",
+                                    getattr(thread, "id", ""),
+                                    cleanup_err,
+                                )
+                        if agent is not None:
+                            try:
+                                agents_client.delete_agent(agent.id)
+                            except Exception as cleanup_err:
+                                logger.warning(
+                                    "Failed to delete ephemeral agent %s: %s",
+                                    getattr(agent, "id", ""),
+                                    cleanup_err,
+                                )
+
+                if result is not None:
+                    return result
+
+            except ServiceResponseError as exc:
+                last_error = exc
+                logger.warning(
+                    "Bing agent connection error on attempt %d/%d: %s",
+                    attempt,
+                    attempts,
+                    exc,
                 )
-                follow_up_run = agents_client.runs.create_and_process(
-                    thread_id=thread.id, agent_id=agent.id
-                )
-                if follow_up_run.status == "completed":
-                    follow_up_messages = agents_client.messages.list(thread_id=thread.id)
-                    for msg in follow_up_messages:
-                        if self._role_equals(getattr(msg, "role", None), "assistant") and msg.id != assistant_msg.id:
-                            citations = self._extract_citations(msg)
-                            break
+                if attempt < attempts:
+                    time.sleep(2 ** attempt)
+                    continue
+                raise
+            except Exception as exc:
+                logger.exception("Bing agent task failed for prompt '%s'", user_prompt)
+                raise
 
-            # Format citations as markdown
-            citations_md = ""
-            if citations:
-                citations_md = "\n".join([f"- [{c['title']}]({c['url']})" for c in citations])
+        if last_error is not None:
+            raise last_error
 
-            return {
-                "summary": body or "",
-                "citations_md": citations_md,
-                "audit": {
-                    "citation_count": len(citations),
-                    "search_queries": [user_prompt]
-                }
-            }
-        except Exception as exc:
-            logger.exception("Bing agent task failed for prompt '%s'", user_prompt)
-            raise
+        raise RuntimeError("Bing agent task failed without a specific error")
 
     # -----------------------
     # Public API methods
