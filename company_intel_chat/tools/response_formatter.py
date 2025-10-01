@@ -58,12 +58,24 @@ class ResponseFormatter:
             return self._format_generic_response(execution_result)
         
         # Format the briefing data
+        formatted_sections = []
+        for scope, section_summary in (briefing.sections or {}).items():
+            if not section_summary:
+                continue
+            formatted_sections.append(
+                {
+                    "task_type": scope,
+                    "target": briefing.company.name,
+                    "content": section_summary,
+                }
+            )
+
         response = {
             "type": "company_briefing",
             "company": briefing.company.name,
             "summary": briefing.summary,
             "events": [self._format_event(event) for event in briefing.events],
-            "sections": briefing.sections,
+            "sections": formatted_sections,
             "citations": self._format_citations(execution_result.all_citations),
             "execution_time": execution_result.execution_time
         }
