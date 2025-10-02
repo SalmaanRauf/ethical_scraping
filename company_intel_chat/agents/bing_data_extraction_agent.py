@@ -125,7 +125,9 @@ class BingDataExtractionAgent:
         """Remove any inline raw URLs from the body text (we do not trust them)."""
         if not text:
             return text
-        return re.sub(r"https?://\S+", "[link omitted]", text)
+        cleaned = re.sub(r"https?://\S+", "[link omitted]", text)
+        cleaned = re.sub(r"【[^】]+】", "", cleaned)
+        return cleaned
 
     @staticmethod
     def _role_equals(role_obj: Any, expected: str) -> bool:
@@ -278,7 +280,7 @@ class BingDataExtractionAgent:
                         if not assistant_msg:
                             raise RuntimeError("No assistant message found")
 
-                        body = self._extract_text(assistant_msg)
+                        body = self._strip_inline_urls(self._extract_text(assistant_msg))
                         citations = self._extract_citations(assistant_msg)
 
                         if not citations:
@@ -312,7 +314,7 @@ class BingDataExtractionAgent:
                                         and msg.id != assistant_msg.id
                                     ):
                                         citations = self._extract_citations(msg)
-                                        body = self._extract_text(msg)
+                                        body = self._strip_inline_urls(self._extract_text(msg))
                                         break
 
                         citations_md = ""
