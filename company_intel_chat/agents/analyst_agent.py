@@ -9,7 +9,7 @@ import asyncio
 import re
 import os
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from config.kernel_setup import get_kernel, get_kernel_async
 from semantic_kernel.functions import KernelFunctionFromPrompt
 from semantic_kernel.kernel import KernelArguments
@@ -548,7 +548,41 @@ class AnalystAgent:
         financial_events = await self.analyze_financial_events(relevant_items)
         procurement_events = await self.analyze_procurement(relevant_items)
         earnings_events = await self.analyze_earnings_calls(relevant_items)
-        all_events = financial_events + procurement_events + earnings_events
-        final_insights = await self.generate_insights(all_events)
+
+        scoped_priority = [
+            "sec_filings",
+            "news",
+            "procurement",
+            "earnings",
+            "industry_context",
+        ]
+
+        deduped_by_scope: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        fallback_events: List[Dict[str, Any]] = []
+        for event in financial_events + procurement_events + earnings_events:
+            if not isinstance(event, dict):
+                fallback_events.append(event)
+                continue
+            company = event.get('company')
+            raw_data = event.get('raw_data') or {}
+            scope = raw_data.get('scope') if isinstance(raw_data, dict) else None
+            if company and scope:
+                key = (company, scope)
+                if key not in deduped_by_scope:
+                    deduped_by_scope[key] = event
+            else:
+                fallback_events.append(event)
+
+        ordered_events: List[Dict[str, Any]] = []
+        for scope in scoped_priority:
+            for (company, scoped), event in deduped_by_scope.items():
+                if scoped == scope:
+                    ordered_events.append(event)
+        for (company, scoped), event in deduped_by_scope.items():
+            if scoped not in scoped_priority:
+                ordered_events.append(event)
+        ordered_events.extend(fallback_events)
+
+        final_insights = await self.generate_insights(ordered_events)
         print(f"Analysis complete: {len(final_insights)} high-impact events identified")
         return final_insights
