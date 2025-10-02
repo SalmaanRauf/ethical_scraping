@@ -278,82 +278,136 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
             profile = _lookup_profile(company)
             if not profile:
                 return
+
+            def _from_people(key: str):
+                people = profile.get("people") or {}
+                return (
+                    people.get(key)
+                    or people.get(key.lower())
+                    or people.get(key.replace("_", ""))
+                    or people.get(key[0].lower() + key[1:])
+                    or []
+                )
+
+            def _from_opportunities(key: str):
+                opps = profile.get("opportunities") or {}
+                return (
+                    opps.get(key)
+                    or opps.get(key.lower())
+                    or opps.get(key[0].lower() + key[1:])
+                    or []
+                )
+
             lines = ["# 🧾 Account Context", ""]
-            overview_fields = []
+
+            description = profile.get("description") or profile.get("company_description")
+            if description and description != "N/A":
+                lines.append(f"**Description:** {description}")
+                lines.append("")
+
+            overview_pairs = []
             for label, key in (
                 ("Company", "company_name"),
                 ("Industry", "industry"),
                 ("Size", "size"),
                 ("Annual Revenue", "revenue"),
-                ("Recent Stock Price", "recent_stock_price"),
+                ("Website", "website"),
             ):
                 value = profile.get(key)
                 if value and value != "N/A":
-                    overview_fields.append(f"- **{label}:** {value}")
-            if overview_fields:
+                    overview_pairs.append((label, value))
+            if overview_pairs:
                 lines.append("**Overview**")
-                lines.extend(overview_fields)
+                for label, value in overview_pairs:
+                    lines.append(f"- **{label}:** {value}")
                 lines.append("")
 
-            people = profile.get("people", {}) or {}
-            key_buyers = people.get("key_buyers", [])
-            if key_buyers:
+            raw_key_buyers = _from_people("keyBuyers") or _from_people("key_buyers")
+            if raw_key_buyers:
+                sorted_buyers = sorted(
+                    raw_key_buyers,
+                    key=lambda b: b.get("numberOfWins", 0),
+                    reverse=True,
+                )
                 lines.append("**Key Buyers**")
-                for buyer in key_buyers[:5]:
+                for buyer in sorted_buyers[:2]:
                     name = buyer.get("name", "Unknown")
-                    title = buyer.get("title")
+                    lines.append(f"• {name}")
+                    if buyer.get("title"):
+                        lines.append(f"  - Title: {buyer['title']}")
+                    if buyer.get("emailAddress"):
+                        lines.append(f"  - Email: {buyer['emailAddress']}")
+                    if buyer.get("linkedinUrl"):
+                        lines.append(f"  - LinkedIn: {buyer['linkedinUrl']}")
                     wins = buyer.get("numberOfWins")
                     last_win = buyer.get("lastOpportunityWonDate")
-                    entry = f"- {name}"
-                    details = []
-                    if title:
-                        details.append(title)
-                    if wins:
-                        details.append(f"wins: {wins}")
-                    if last_win:
-                        details.append(f"last win: {last_win[:10]}")
-                    if details:
-                        entry += f" ({', '.join(details)})"
-                    lines.append(entry)
-                lines.append("")
+                    if wins or last_win:
+                        detail = []
+                        if wins:
+                            detail.append(f"wins: {wins}")
+                        if last_win:
+                            detail.append(f"last win: {last_win[:10]}")
+                        lines.append(f"  - Performance: {', '.join(detail)}")
+                    close_won = (
+                        buyer.get("closeWonOpps")
+                        or buyer.get("close_won_opps")
+                        or []
+                    )
+                    if close_won:
+                        lines.append("  - Recent Wins:")
+                        for opp in close_won[:3]:
+                            if isinstance(opp, dict):
+                                opp_name = opp.get("name", "Unnamed Opportunity")
+                                solution = opp.get("solution")
+                                close_date = opp.get("opportunityCloseDate")
+                                extra = []
+                                if solution:
+                                    extra.append(solution)
+                                if close_date:
+                                    extra.append(close_date[:10])
+                                suffix = f" ({', '.join(extra)})" if extra else ""
+                                lines.append(f"    • {opp_name}{suffix}")
+                            else:
+                                lines.append(f"    • {opp}")
+                    lines.append("")
 
-            open_opps = (profile.get("opportunities", {}) or {}).get("open", [])
-            if open_opps:
-                lines.append("**Open Opportunities**")
-                for opp in open_opps[:5]:
-                    name = opp.get("name", "Unnamed Opportunity")
-                    value = opp.get("value") or opp.get("value_usd")
-                    status = opp.get("status")
-                    entry = f"- {name}"
-                    details = []
-                    if value:
-                        details.append(str(value))
-                    if status:
-                        details.append(status)
-                    if details:
-                        entry += f" ({', '.join(details)})"
-                    lines.append(entry)
-                lines.append("")
-
-            alumni = people.get("alumni", [])
-            if alumni:
+            raw_alumni = _from_people("alumni") or _from_people("protiviti_alumni")
+            if raw_alumni:
                 lines.append("**Protiviti Alumni**")
-                for alum in alumni[:5]:
-                    name = alum.get("name", "Unnamed Alum")
-                    title = alum.get("title")
-                    entry = f"- {name}"
-                    if title:
-                        entry += f" ({title})"
-                    lines.append(entry)
+                for alum in raw_alumni[:3]:
+                    if isinstance(alum, dict):
+                        name = alum.get("name", "Unknown")
+                        lines.append(f"• {name}")
+                        if alum.get("title"):
+                            lines.append(f"  - Title: {alum['title']}")
+                        if alum.get("emailAddress"):
+                            lines.append(f"  - Email: {alum['emailAddress']}")
+                        if alum.get("linkedinUrl"):
+                            lines.append(f"  - LinkedIn: {alum['linkedinUrl']}")
+                        lines.append("")
+                    else:
+                        lines.append(f"• {alum}")
+                if lines[-1] != "":
+                    lines.append("")
+
+            open_opps = _from_opportunities("open")
+            if open_opps:
+                lines.append("**Active Opportunities**")
+                for opp in open_opps[:3]:
+                    if isinstance(opp, dict):
+                        name = opp.get("name", "Unnamed Opportunity")
+                        details = []
+                        for key in ("value", "value_usd", "status"):
+                            value = opp.get(key)
+                            if value:
+                                details.append(str(value))
+                        suffix = f" ({', '.join(details)})" if details else ""
+                        lines.append(f"• {name}{suffix}")
+                    else:
+                        lines.append(f"• {opp}")
                 lines.append("")
 
-            description = profile.get("description")
-            if description and description != "N/A":
-                lines.append("**Description**")
-                lines.append(description)
-                lines.append("")
-
-            await cl.Message("\n".join(lines)).send()
+            await cl.Message("\n".join(lines).rstrip()).send()
 
         async def _present_company_briefing(payload: Dict[str, Any]) -> None:
             company = payload.get("company", "Company")
