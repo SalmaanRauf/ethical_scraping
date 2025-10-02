@@ -59,6 +59,8 @@ class BingDataExtractionAgent:
         "• Use the tool to perform web search and retrieve information.\n"
         "• Prefer primary/official sources (issuer investor relations sites, SEC EDGAR, U.S. regulators) and tier-1 wires "
         "  (Reuters, Bloomberg, AP, WSJ) when available, but you may use any reputable sources discovered by the tool.\n"
+        "• Capture key quantitative metrics (deal value, consideration mix, financial figures, timelines) and cite them explicitly. "
+        "If sources conflict on a metric, note the discrepancy.\n"
         "• Compile findings into a structured, concise summary with clear bullets and/or short paragraphs.\n"
         "• IMPORTANT: Provide **sources only via the tool's citation annotations**. \n"
         "• When citing SEC filings, reference the specific filing page discovered via the tool (e.g., filing index/IXBRL), "
@@ -422,7 +424,8 @@ class BingDataExtractionAgent:
         query = (
             f"TASK: 2025+ impactful news for {company} (regulatory, financial, M&A, risk). "
             "Use the Grounding with Bing Search tool with appropriate freshness. Provide multiple citations for major "
-            "claims when available. No raw URLs in body; sources only via citation annotations."
+            "claims when available. Surface transaction values, regulatory conditions, community commitments, and "
+            "integration plans for any M&A activity. No raw URLs in body; sources only via citation annotations."
         )
         return self._run_agent_task(query)
 

@@ -37,12 +37,37 @@ class AnalystAgent:
         self._load_functions()
         
     def set_profiles(self, profiles_dict: dict):
-        self.company_profiles = profiles_dict or {}
+        normalized = {}
+        for key, profile in (profiles_dict or {}).items():
+            if not profile:
+                continue
+            canonical = profile.get("company_name") or key
+            variants = {
+                key,
+                canonical,
+                (key or "").lower(),
+                (canonical or "").lower(),
+            }
+            for variant in variants:
+                if variant:
+                    normalized[variant] = profile
+        self.company_profiles = normalized
 
     async def _ensure_kernel_initialized(self):
         if self.kernel is None or self.exec_settings is None:
             self.kernel, self.exec_settings = await get_kernel_async()
             self._load_functions()
+
+    def _lookup_company_profile(self, company: str):
+        if not company:
+            return {}
+        return (
+            self.company_profiles.get(company)
+            or self.company_profiles.get(company.lower())
+            or self.company_profiles.get(company.replace("_", " "))
+            or self.company_profiles.get(company.replace("_", " ").lower())
+            or {}
+        )
 
     async def ensure_kernel_ready(self) -> None:
         """Public helper to guarantee kernel and SK functions are available."""
@@ -318,7 +343,7 @@ class AnalystAgent:
         else:
             events = events_input
             profiles = getattr(self, "company_profiles", {})
-        self.company_profiles = profiles
+        self.set_profiles(profiles)
         print(f"🧠 Starting analysis of {len(events)} consolidated items...")
         adapted_data = []
         for item in events:
@@ -490,7 +515,7 @@ class AnalystAgent:
         insights = []
         for event in events:
             try:
-                company_profile = self.company_profiles.get(event.get('company', ''), {})
+                company_profile = self._lookup_company_profile(event.get('company', ''))
                 insight_data = {
                     'company': event.get('company', ''),
                     'title': event.get('title', ''),
@@ -527,7 +552,7 @@ class AnalystAgent:
         for ev in insights:
             company_map[ev['company']].append(ev)
         for company, evts in company_map.items():
-            profile = self.company_profiles.get(company, {})
+            profile = self._lookup_company_profile(company)
             summary_input = {
                 'company': company,
                 'profile': profile,
