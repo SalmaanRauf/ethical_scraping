@@ -178,6 +178,8 @@ class BingDataExtractionAgent:
                 return
             if not url.lower().startswith(("http://", "https://")):
                 return
+            if "ainvest.com" in url.lower():
+                return
             if url in seen_urls:
                 return
             citations.append({"title": title or url, "url": url})
@@ -208,6 +210,22 @@ class BingDataExtractionAgent:
                 continue
 
         return citations
+
+    def _log_run_steps_bing_queries(self, agents_client, thread_id: str, run_id: str) -> List[str]:
+        """Best-effort capture of Grounding with Bing query strings for auditing."""
+        queries: List[str] = []
+        try:
+            steps = agents_client.runs.list_steps(thread_id=thread_id, run_id=run_id)
+            for step in steps:
+                tool_calls = getattr(step, "tool_calls", None) or []
+                for call in tool_calls:
+                    for attr in ("query", "parameters", "args", "arguments"):
+                        value = getattr(call, attr, None)
+                        if value:
+                            queries.append(str(value))
+        except Exception:
+            pass
+        return queries
 
     def _run_agent_task(self, user_prompt: str) -> Dict[str, Any]:
         """
@@ -246,6 +264,10 @@ class BingDataExtractionAgent:
                         if run.status == "failed":
                             raise RuntimeError(f"Bing grounding run failed: {run.last_error}")
 
+                        search_queries = self._log_run_steps_bing_queries(
+                            agents_client, thread.id, run.id
+                        )
+
                         messages = agents_client.messages.list(thread_id=thread.id)
                         assistant_msg = None
                         for msg in messages:
@@ -261,19 +283,28 @@ class BingDataExtractionAgent:
 
                         if not citations:
                             logger.warning("No citations found, attempting corrective follow-up")
+                            follow_up_prompt = (
+                                f"{user_prompt}\n\nFOLLOW-UP:\n"
+                                "Citations were missing or incomplete. Re-run the search using the Grounding with "
+                                "Bing Search tool and attach explicit citation annotations for every major claim. "
+                                "Organize the response into clearly labeled bullet sections, and avoid placing raw "
+                                "URLs in the body—use annotations only."
+                            )
                             agents_client.messages.create(
                                 thread_id=thread.id,
                                 role=MessageRole.USER,
-                                content=(
-                                    "Please provide sources for your previous response using the "
-                                    "Grounding with Bing Search tool."
-                                ),
+                                content=follow_up_prompt,
                             )
                             follow_up_run = agents_client.runs.create_and_process(
                                 thread_id=thread.id,
                                 agent_id=agent.id,
                             )
                             if follow_up_run.status == "completed":
+                                search_queries.extend(
+                                    self._log_run_steps_bing_queries(
+                                        agents_client, thread.id, follow_up_run.id
+                                    )
+                                )
                                 follow_up_messages = agents_client.messages.list(thread_id=thread.id)
                                 for msg in follow_up_messages:
                                     if (
@@ -281,18 +312,24 @@ class BingDataExtractionAgent:
                                         and msg.id != assistant_msg.id
                                     ):
                                         citations = self._extract_citations(msg)
+                                        body = self._extract_text(msg)
                                         break
 
                         citations_md = ""
                         if citations:
                             citations_md = "\n".join([f"- [{c['title']}]({c['url']})" for c in citations])
 
+                        if not search_queries:
+                            search_queries = [user_prompt]
+
+                        audit_queries = list(dict.fromkeys(search_queries))
+
                         result = {
                             "summary": body or "",
                             "citations_md": citations_md,
                             "audit": {
                                 "citation_count": len(citations),
-                                "search_queries": [user_prompt],
+                                "search_queries": audit_queries,
                             },
                         }
                     finally:
@@ -361,8 +398,11 @@ class BingDataExtractionAgent:
         """
         logger.info(f"Searching SEC filings for {company}")
         query = (
-            f"TASK: Find recent SEC filings, 10-K, 10-Q, 8-K, and other regulatory disclosures for {company}. "
-            "Use the Grounding with Bing Search tool, provide concise bullets, and cite all claims (annotations)."
+            f"TASK: SEC filings and key findings for {company}. "
+            "Focus on 2025+ 10-K, 10-Q, and 8-K; highlight material items (Risk Factors, MD&A, specific 8-K Items). "
+            "Use the Grounding with Bing Search tool to discover the specific filing pages (filing index/IXBRL) and "
+            "summarize the relevant content. Provide concise bullets per finding. Do NOT place raw URLs in your body; "
+            "provide sources only via citation annotations."
         )
         return self._run_agent_task(query)
 
@@ -378,8 +418,9 @@ class BingDataExtractionAgent:
         """
         logger.info(f"Searching news for {company}")
         query = (
-            f"TASK: Find recent news, press releases, and market developments for {company}. "
-            "Use the Grounding with Bing Search tool, provide concise bullets, and cite all claims (annotations)."
+            f"TASK: 2025+ impactful news for {company} (regulatory, financial, M&A, risk). "
+            "Use the Grounding with Bing Search tool with appropriate freshness. Provide multiple citations for major "
+            "claims when available. No raw URLs in body; sources only via citation annotations."
         )
         return self._run_agent_task(query)
 
@@ -395,8 +436,9 @@ class BingDataExtractionAgent:
         """
         logger.info(f"Searching procurement for {company}")
         query = (
-            f"TASK: Find government procurement opportunities, contracts, and SAM.gov listings for {company}. "
-            "Use the Grounding with Bing Search tool, provide concise bullets, and cite all claims (annotations)."
+            f"TASK: U.S. Government procurement context for {company}. "
+            "Use the Grounding with Bing Search tool to find notable government notices or official releases; if none are "
+            "visible, say so briefly. No raw URLs in body; sources only via citation annotations."
         )
         return self._run_agent_task(query)
 
@@ -412,8 +454,9 @@ class BingDataExtractionAgent:
         """
         logger.info(f"Searching earnings for {company}")
         query = (
-            f"TASK: Find recent earnings calls, financial guidance, and investor presentations for {company}. "
-            "Use the Grounding with Bing Search tool, provide concise bullets, and cite all claims (annotations)."
+            f"TASK: Earnings for {company} (transcripts, releases, guidance). "
+            "Prefer issuer investor relations and SEC filings discovered via the Grounding with Bing Search tool. "
+            "Summarize key deltas and guidance clearly. No raw URLs in body; sources only via citation annotations."
         )
         return self._run_agent_task(query)
 
@@ -429,8 +472,9 @@ class BingDataExtractionAgent:
         """
         logger.info(f"Searching industry context for {company}")
         query = (
-            f"TASK: Find industry analysis, competitive landscape, and market trends relevant to {company}. "
-            "Use the Grounding with Bing Search tool, provide concise bullets, and cite all claims (annotations)."
+            f"TASK: Sector/competitive context for {company}. "
+            "Use the Grounding with Bing Search tool to discover credible landscape sources; keep to facts and label opinion "
+            "as such. No raw URLs in body; sources only via citation annotations."
         )
         return self._run_agent_task(query)
 
