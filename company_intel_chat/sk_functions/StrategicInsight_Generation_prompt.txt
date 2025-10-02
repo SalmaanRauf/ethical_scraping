@@ -21,7 +21,7 @@ Follow these steps to create your analysis:
 6.  **Map to Firm Services:** Connect those needs to your firm's specific service lines.
 7.  **Assess Urgency:** Judge the timeline and importance of the event to assign an urgency level.
 8.  **Provide Industry Context:** Place this event within the broader industry trends.
-9.  **Preserve Source Information:** Include relevant source URLs in your analysis when they add credibility or provide additional context.
+9.  **Ground in Provided Citations:** Support your analysis using only the citations supplied in the input; never invent or speculate new URLs.
 10. **Format Output:** Produce a single, valid JSON object containing your complete analysis. Do not include any other text, explanations, or markdown.
 
 **OUTPUT SCHEMA:**
@@ -38,8 +38,7 @@ Respond with ONLY a valid JSON object matching this structure. Do not add commen
   "industry_overview": "(String) A 1-2 sentence summary of how this event fits into broader industry trends, citing the source of the context (e.g., News, Bing Search).",
   "priority": "(String) Overall priority level for this event. Must be one of: Critical, High, Medium, Low.",
   "timeline": "(String) Expected timeline for client action. Must be one of: Immediate, Short-term, Medium-term, Long-term.",
-  "service_categories": "(Array) List of specific service categories that apply. Must be from: Advisory, Technology, Risk Management, Compliance, Strategic Planning, Operational Excellence.",
-  "source_urls": "(Array) Relevant source URLs that support this analysis, preserving original citations."
+  "service_categories": "(Array) List of specific service categories that apply. Must be from: Advisory, Technology, Risk Management, Compliance, Strategic Planning, Operational Excellence."
 }
 ```
 
@@ -62,8 +61,7 @@ Respond with ONLY a valid JSON object matching this structure. Do not add commen
   "industry_overview": "This action aligns with a broader trend of regulators imposing heavy penalties for cybersecurity lapses across the financial services industry.",
   "priority": "Critical",
   "timeline": "Immediate",
-  "service_categories": ["Risk Management", "Compliance", "Advisory"],
-  "source_urls": ["https://occ.gov/news-issuances/news-releases/2021/nr-occ-2021-123.html"]
+  "service_categories": ["Risk Management", "Compliance", "Advisory"]
 }
 ```
 

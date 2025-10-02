@@ -22,7 +22,7 @@ You are an earnings call analyst specializing in forward-looking guidance and st
 - Clear timeline for implementation  
 - Strategic significance and business impact  
 - Consulting opportunity potential
-- Preserve source URLs for verification
+- Do not output or fabricate URLs; the caller will attach citations separately
 
 **Key Phrases to Look For:**
 - "We plan to invest..."  
@@ -47,6 +47,5 @@ All keys and string values should be double-quoted, booleans/integers should be 
   "timeframe": "When this spending is expected to occur",
   "company": "Company name",
   "confidence": "high" | "medium" | "low",
-  "consulting_opportunity": "Specific consulting opportunities this creates",
-  "source_urls": "Array of relevant source URLs"
+  "consulting_opportunity": "Specific consulting opportunities this creates"
 }
