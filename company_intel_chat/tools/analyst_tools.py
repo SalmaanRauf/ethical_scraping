@@ -2,7 +2,7 @@
 Analyst tool wrappers that expose a typed interface over AnalystAgent.
 """
 from __future__ import annotations
-from typing import List
+from typing import Dict, List, Optional, Set
 
 from models.schemas import AnalysisItem, AnalysisEvent, Citation
 from agents.analyst_agent import AnalystAgent
@@ -26,24 +26,49 @@ async def analyst_synthesis(items: List[AnalysisItem], analyst: AnalystAgent) ->
     for ev in results or []:
         title = ev.get("title") or ev.get("headline") or "Untitled"
         insights = ev.get("insights") or {}
+        raw_data = ev.get("raw_data") if isinstance(ev, dict) else {}
+        allowed_map: Dict[str, str] = {}
+
+        def _record_allowed(url: Optional[str], title: Optional[str]) -> None:
+            if not url or not isinstance(url, str):
+                return
+            if not url.startswith("http"):
+                return
+            if url not in allowed_map:
+                allowed_map[url] = title or url
+
         cites_raw = ev.get("citations") or []
-        if not cites_raw and isinstance(ev.get("raw_data"), dict):
-            md = ev["raw_data"].get("citations_md", "")
+        if not cites_raw and isinstance(raw_data, dict):
+            md = raw_data.get("citations_md", "")
             cites_raw = _citations_from_md(md)
-        citations: List[Citation] = []
-        for c in cites_raw or []:
+
+        for entry in cites_raw or []:
             try:
-                if isinstance(c, Citation):
-                    citations.append(c)
-                elif isinstance(c, dict) and c.get("url"):
-                    citations.append(Citation(title=c.get("title"), url=c.get("url")))
+                if isinstance(entry, Citation):
+                    _record_allowed(entry.url, entry.title)
+                elif isinstance(entry, dict):
+                    _record_allowed(entry.get("url"), entry.get("title"))
             except Exception:
                 continue
-        # Extract source_urls from insights and add to citations
-        if isinstance(insights, dict) and insights.get("source_urls"):
-            for url in insights["source_urls"]:
-                if isinstance(url, str) and url.startswith("http"):
-                    citations.append(Citation(title="Source", url=url))
+
+        citations: List[Citation] = []
+        seen_urls: Set[str] = set()
+        for url, title in allowed_map.items():
+            if url in seen_urls:
+                continue
+            citations.append(Citation(title=title, url=url))
+            seen_urls.add(url)
+
+        if isinstance(insights, dict):
+            for url in insights.get("source_urls", []) or []:
+                if not isinstance(url, str):
+                    continue
+                if url not in allowed_map:
+                    continue
+                if url in seen_urls:
+                    continue
+                citations.append(Citation(title=allowed_map.get(url, url), url=url))
+                seen_urls.add(url)
         meta = {k: v for k, v in ev.items() if k not in {"title", "insights", "citations"}}
         events.append(AnalysisEvent(title=title, insights=insights, citations=citations, meta=meta))
     return events

@@ -70,11 +70,23 @@ class ResponseFormatter:
                 }
             )
 
+        unique_events = []
+        seen_event_keys = set()
+        for event in briefing.events:
+            meta = getattr(event, "meta", {}) if hasattr(event, "meta") else event.get("meta", {}) if isinstance(event, dict) else {}
+            raw_data = meta.get("raw_data", {}) if isinstance(meta, dict) else {}
+            scope = raw_data.get("scope") if isinstance(raw_data, dict) else None
+            key = (briefing.company.name, scope or getattr(event, "title", None))
+            if key in seen_event_keys:
+                continue
+            seen_event_keys.add(key)
+            unique_events.append(event)
+
         response = {
             "type": "company_briefing",
             "company": briefing.company.name,
             "summary": briefing.summary,
-            "events": [self._format_event(event) for event in briefing.events],
+            "events": [self._format_event(event) for event in unique_events],
             "sections": formatted_sections,
             "raw_gwbs": self._serialize_gwbs_sections(briefing),
             "citations": self._format_citations(execution_result.all_citations),
