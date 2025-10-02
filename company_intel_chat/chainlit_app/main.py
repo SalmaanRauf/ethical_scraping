@@ -29,6 +29,7 @@ from tools.orchestrators import enhanced_user_request_handler
 from services.enhanced_router import enhanced_router
 from tools.task_executor import task_executor
 from tools.response_formatter import response_formatter
+from services.company_profiles import load_company_profiles
 
 setup_logging(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -94,6 +95,23 @@ async def _init_singletons() -> None:
             cl.user_session.set("analyst_agent", analyst)
         await analyst.ensure_kernel_ready()
 
+        profiles = cl.user_session.get("company_profiles")
+        if profiles is None:
+            profiles = load_company_profiles()
+            cl.user_session.set("company_profiles", profiles)
+        if profiles:
+            analyst.set_profiles(profiles)
+            try:
+                ctx = _get_ctx()
+                available = {
+                    (profile.get("company_name") or name)
+                    for name, profile in profiles.items()
+                    if isinstance(profile, dict)
+                }
+                ctx.available_companies = sorted(available)
+            except Exception as exc:  # pragma: no cover - defensive safeguard
+                logger.debug("Unable to update available companies: %s", exc)
+
         if not cl.user_session.get("follow_up_handler"):
             bing_agent = cl.user_session.get("bing_agent")
             if bing_agent:
@@ -138,6 +156,17 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
             await cl.Message(error_text).send()
             return
         
+        profiles_cache = cl.user_session.get("company_profiles") or {}
+
+        def _lookup_profile(name: Optional[str]) -> Optional[Dict[str, Any]]:
+            if not name:
+                return None
+            candidates = [name, name.lower(), name.replace("_", " "), name.replace("_", " ").lower()]
+            for candidate in candidates:
+                if candidate in profiles_cache:
+                    return profiles_cache[candidate]
+            return None
+
         async def _send_sources(citations, heading="Sources"):
             if not citations:
                 return
@@ -245,6 +274,87 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
 
             await cl.Message("\n".join(lines)).send()
 
+        async def _present_account_context(company: str) -> None:
+            profile = _lookup_profile(company)
+            if not profile:
+                return
+            lines = ["# 🧾 Account Context", ""]
+            overview_fields = []
+            for label, key in (
+                ("Company", "company_name"),
+                ("Industry", "industry"),
+                ("Size", "size"),
+                ("Annual Revenue", "revenue"),
+                ("Recent Stock Price", "recent_stock_price"),
+            ):
+                value = profile.get(key)
+                if value and value != "N/A":
+                    overview_fields.append(f"- **{label}:** {value}")
+            if overview_fields:
+                lines.append("**Overview**")
+                lines.extend(overview_fields)
+                lines.append("")
+
+            people = profile.get("people", {}) or {}
+            key_buyers = people.get("key_buyers", [])
+            if key_buyers:
+                lines.append("**Key Buyers**")
+                for buyer in key_buyers[:5]:
+                    name = buyer.get("name", "Unknown")
+                    title = buyer.get("title")
+                    wins = buyer.get("numberOfWins")
+                    last_win = buyer.get("lastOpportunityWonDate")
+                    entry = f"- {name}"
+                    details = []
+                    if title:
+                        details.append(title)
+                    if wins:
+                        details.append(f"wins: {wins}")
+                    if last_win:
+                        details.append(f"last win: {last_win[:10]}")
+                    if details:
+                        entry += f" ({', '.join(details)})"
+                    lines.append(entry)
+                lines.append("")
+
+            open_opps = (profile.get("opportunities", {}) or {}).get("open", [])
+            if open_opps:
+                lines.append("**Open Opportunities**")
+                for opp in open_opps[:5]:
+                    name = opp.get("name", "Unnamed Opportunity")
+                    value = opp.get("value") or opp.get("value_usd")
+                    status = opp.get("status")
+                    entry = f"- {name}"
+                    details = []
+                    if value:
+                        details.append(str(value))
+                    if status:
+                        details.append(status)
+                    if details:
+                        entry += f" ({', '.join(details)})"
+                    lines.append(entry)
+                lines.append("")
+
+            alumni = people.get("alumni", [])
+            if alumni:
+                lines.append("**Protiviti Alumni**")
+                for alum in alumni[:5]:
+                    name = alum.get("name", "Unnamed Alum")
+                    title = alum.get("title")
+                    entry = f"- {name}"
+                    if title:
+                        entry += f" ({title})"
+                    lines.append(entry)
+                lines.append("")
+
+            description = profile.get("description")
+            if description and description != "N/A":
+                lines.append("**Description**")
+                lines.append(description)
+                lines.append("")
+
+            await cl.Message("\n".join(lines)).send()
+
         async def _present_company_briefing(payload: Dict[str, Any]) -> None:
             company = payload.get("company", "Company")
             summary = payload.get("summary", "")
@@ -257,6 +367,7 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
                 await cl.Message(summary).send()
 
             await _present_events(company, events, summary)
+            await _present_account_context(company)
 
         if response_type == "company_briefing":
             await _present_company_briefing(response)
@@ -287,6 +398,8 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
                     await _send_sources(section.get("citations", []))
 
             await _send_sources(response.get("citations", []))
+            if response.get("company"):
+                await _present_account_context(response.get("company"))
 
         else:
             summary = response.get("summary", "")
@@ -303,6 +416,8 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
 
             await _present_events(response.get("company", "Company"), response.get("events", []), summary)
             await _send_sources(response.get("citations", []))
+            if response.get("company"):
+                await _present_account_context(response.get("company"))
 
         # Present metadata
         execution_time = response.get("execution_time", 0)
