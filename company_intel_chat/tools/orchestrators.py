@@ -13,6 +13,7 @@ from tools.analyst_tools import analyst_synthesis
 from services.cache import TTLCache, cache_key
 from services.classifier import classify_primary, needs_analyst as _needs_analyst, scopes_for_label
 from config.config import Config as AppConfig
+from services.deep_research_client import get_deep_research_client
 
 logger = logging.getLogger(__name__)
 
@@ -355,6 +356,54 @@ async def general_research(prompt: str, *, bing_agent, progress: Optional[Callab
                     
     logger.info(f"General research completed - found {len(cites)} citations")
     return (raw or {}).get("summary", ""), cites[:8]
+
+
+async def run_deep_research(query: str) -> Dict[str, Any]:
+    """Execute a Deep Research run and normalize the output."""
+    if not AppConfig.ENABLE_DEEP_RESEARCH:
+        raise RuntimeError("Deep Research feature flag is disabled")
+
+    client = get_deep_research_client()
+    report = await client.run(query)
+
+    def _dedupe_citations(items: List[Citation]) -> List[Citation]:
+        deduped: List[Citation] = []
+        seen = set()
+        for item in items:
+            if item.url not in seen:
+                deduped.append(item)
+                seen.add(item.url)
+        return deduped
+
+    def _to_citation_list(raw_items) -> List[Citation]:
+        cites: List[Citation] = []
+        for entry in raw_items:
+            if entry.url:
+                cites.append(Citation(title=entry.title or entry.url, url=entry.url))
+        return cites
+
+    sections: List[Dict[str, Any]] = []
+    combined = _to_citation_list(report.citations)
+
+    for section in report.sections:
+        section_citations = _to_citation_list(section.citations)
+        combined.extend(section_citations)
+        sections.append(
+            {
+                "title": section.heading or "Findings",
+                "content": section.content,
+                "citations": section_citations,
+            }
+        )
+
+    response = {
+        "type": "deep_research",
+        "summary": report.summary,
+        "sections": sections,
+        "citations": _dedupe_citations(combined),
+        "metadata": report.metadata,
+    }
+    return response
 # Enhanced orchestrator functions for new capabilities
 
 async def enhanced_user_request_handler(
