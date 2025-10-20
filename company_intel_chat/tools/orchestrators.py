@@ -366,27 +366,28 @@ async def run_deep_research(query: str) -> Dict[str, Any]:
     client = get_deep_research_client()
     report = await client.run(query)
 
-    def _dedupe_citations(items: List[Citation]) -> List[Citation]:
-        deduped: List[Citation] = []
+    def _dedupe_citations(items: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        deduped: List[Dict[str, str]] = []
         seen = set()
         for item in items:
-            if item.url not in seen:
+            url = item.get("url")
+            if url and url not in seen:
                 deduped.append(item)
-                seen.add(item.url)
+                seen.add(url)
         return deduped
 
-    def _to_citation_list(raw_items) -> List[Citation]:
-        cites: List[Citation] = []
+    def _to_citation_dicts(raw_items) -> List[Dict[str, str]]:
+        cites: List[Dict[str, str]] = []
         for entry in raw_items:
             if entry.url:
-                cites.append(Citation(title=entry.title or entry.url, url=entry.url))
+                cites.append({"title": entry.title or entry.url, "url": entry.url})
         return cites
 
     sections: List[Dict[str, Any]] = []
-    combined = _to_citation_list(report.citations)
+    combined = _to_citation_dicts(report.citations)
 
     for section in report.sections:
-        section_citations = _to_citation_list(section.citations)
+        section_citations = _to_citation_dicts(section.citations)
         combined.extend(section_citations)
         sections.append(
             {

@@ -118,6 +118,12 @@ The formatted payload contains:
 - Export endpoints (PDF/PPT/CSV) that consume the formatted response payload.
 - Automated smoke tests for the intent router and task executor.
 
+## 12. Deep Research Mode
+- **Purpose**: Opt-in workflow that routes user requests through the Azure AI Foundry Deep Research tool (o3-deep-research + Bing Grounding) to deliver multi-hop market analysis with traceable citations.
+- **Enablement**: Set `ENABLE_DEEP_RESEARCH=true` and configure `DEEP_RESEARCH_MODEL_DEPLOYMENT_NAME` plus `BING_CONNECTION_NAME` in `.env`. Chainlit exposes a mode selector so users can switch between Standard and Deep pipelines.
+- **Runtime Behaviour**: When Deep mode is active the app posts a single status update (“Performing Deep Research…”) and waits for the managed research pipeline to complete before rendering a consolidated report with sections, citations, and run metadata.
+- **Logging & Fallbacks**: Run and thread identifiers are logged at INFO. If a Deep Research call fails, the system logs the exception and falls back to the standard GWBS-based orchestrator with a user-facing warning.
+
 ---
 
 *Last updated: 29 September 2025*

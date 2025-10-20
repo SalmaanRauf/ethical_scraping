@@ -659,6 +659,12 @@ async def on_message(message: cl.Message):
 
         current_mode = cl.user_session.get(DEEP_RESEARCH_SESSION_KEY, DEFAULT_MODE)
         deep_mode = current_mode == "deep" and AppConfig.ENABLE_DEEP_RESEARCH
+        logger.info(
+            "Deep research mode check: mode=%s, feature_flag=%s, executing=%s",
+            current_mode,
+            AppConfig.ENABLE_DEEP_RESEARCH,
+            deep_mode,
+        )
 
         if deep_mode:
             await cl.Message("🔍 Performing Deep Research… this may take a moment.").send()

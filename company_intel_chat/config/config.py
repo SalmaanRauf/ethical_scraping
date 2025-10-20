@@ -70,6 +70,10 @@ class Config:
                     deep_missing.append(key)
         if deep_missing:
             print(f"⚠️  Warning: Deep Research enabled but missing configuration: {', '.join(deep_missing)}")
+        print(f"🔧 Deep Research enabled: {cls.ENABLE_DEEP_RESEARCH}")
+        if cls.ENABLE_DEEP_RESEARCH:
+            print(f"   • DEEP_RESEARCH_MODEL_DEPLOYMENT_NAME: {cls.DEEP_RESEARCH_MODEL_DEPLOYMENT_NAME or '(missing)'}")
+            print(f"   • BING_CONNECTION_NAME: {cls.BING_CONNECTION_NAME or '(missing)'}")
         print("✅ Configuration, API keys, and operational settings are loaded.")
 
 # Instantiate the config
