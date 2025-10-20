@@ -597,8 +597,18 @@ async def start():
             await cl.AskActionMessage(
                 content="Select research mode (you can change this later):",
                 actions=[
-                    cl.Action(name="set_mode", value="standard", label="Standard Analysis"),
-                    cl.Action(name="set_mode", value="deep", label="Deep Research (slower)")
+                    cl.Action(
+                        name="set_mode",
+                        value="standard",
+                        label="Standard Analysis",
+                        payload={"mode": "standard"},
+                    ),
+                    cl.Action(
+                        name="set_mode",
+                        value="deep",
+                        label="Deep Research (slower)",
+                        payload={"mode": "deep"},
+                    ),
                 ],
             ).send()
         else:
@@ -613,7 +623,8 @@ async def start():
 @cl.action_callback("set_mode")
 async def update_mode(action: cl.Action):
     """Handle mode selection actions."""
-    selected = action.value or DEFAULT_MODE
+    payload_mode = (action.payload or {}).get("mode") if hasattr(action, "payload") else None
+    selected = payload_mode or action.value or DEFAULT_MODE
     if selected == "deep" and not AppConfig.ENABLE_DEEP_RESEARCH:
         await cl.Message("Deep Research is not enabled in this environment.").send()
         cl.user_session.set(DEEP_RESEARCH_SESSION_KEY, DEFAULT_MODE)
