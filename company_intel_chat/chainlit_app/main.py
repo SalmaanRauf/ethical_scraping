@@ -33,6 +33,8 @@ from services.company_profiles import load_company_profiles
 
 setup_logging(level=logging.INFO)
 logger = logging.getLogger(__name__)
+DEEP_RESEARCH_SESSION_KEY = "deep_research_mode"
+DEFAULT_MODE = "standard"
 # --- Input validation helpers ---
 
 def validate_payload(payload: Dict[str, Any], required_keys: list[str]) -> tuple[bool, Optional[str]]:
@@ -176,6 +178,37 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
                 url = citation.get("url", "#")
                 lines.append(f"• [{title}]({url})")
             await cl.Message("\n".join(lines)).send()
+
+        if response_type == "deep_research":
+            lines = ["# 🧠 Deep Research Findings", ""]
+            summary = response.get("summary", "")
+            if summary:
+                lines.append(summary)
+                lines.append("")
+
+            sections = response.get("sections", []) or []
+            for idx, section in enumerate(sections, 1):
+                title = section.get("title") or f"Section {idx}"
+                content = section.get("content", "")
+                lines.append(f"## {title}")
+                if content:
+                    lines.append(content)
+                lines.append("")
+
+            await cl.Message("\n".join(lines).strip()).send()
+            await _send_sources(response.get("citations", []))
+
+            metadata = response.get("metadata", {}) or {}
+            meta_lines = []
+            run_id = metadata.get("run_id")
+            thread_id = metadata.get("thread_id")
+            if run_id:
+                meta_lines.append(f"Run ID: `{run_id}`")
+            if thread_id:
+                meta_lines.append(f"Thread ID: `{thread_id}`")
+            if meta_lines:
+                await cl.Message("ℹ️ " + " | ".join(meta_lines)).send()
+            return
 
         async def _present_events(company: str, events: List[Dict[str, Any]], summary: str = ""):
             if not events:
@@ -554,9 +587,41 @@ async def start():
             "• Mixed requests (e.g., 'Tell me about Tesla and its competitors')"
         )
         await cl.Message(welcome_msg).send()
+
+        current_mode = cl.user_session.get(DEEP_RESEARCH_SESSION_KEY, DEFAULT_MODE)
+        if current_mode not in {"standard", "deep"}:
+            current_mode = DEFAULT_MODE
+        cl.user_session.set(DEEP_RESEARCH_SESSION_KEY, current_mode)
+
+        if AppConfig.ENABLE_DEEP_RESEARCH:
+            await cl.AskActionMessage(
+                content="Select research mode (you can change this later):",
+                actions=[
+                    cl.Action(name="set_mode", value="standard", label="Standard Analysis"),
+                    cl.Action(name="set_mode", value="deep", label="Deep Research (slower)")
+                ],
+            ).send()
+        else:
+            await cl.Message(
+                "🔧 Deep Research mode is unavailable in this environment. Running with the standard analysis pipeline."
+            ).send()
         
     except Exception as e:
         await handle_error(e, "chat_start", "Failed to initialize chat session. Please refresh and try again.")
+
+
+@cl.action_callback("set_mode")
+async def update_mode(action: cl.Action):
+    """Handle mode selection actions."""
+    selected = action.value or DEFAULT_MODE
+    if selected == "deep" and not AppConfig.ENABLE_DEEP_RESEARCH:
+        await cl.Message("Deep Research is not enabled in this environment.").send()
+        cl.user_session.set(DEEP_RESEARCH_SESSION_KEY, DEFAULT_MODE)
+        return
+
+    cl.user_session.set(DEEP_RESEARCH_SESSION_KEY, selected)
+    label = "Deep Research" if selected == "deep" else "Standard Analysis"
+    await cl.Message(f"✅ Mode updated: **{label}**").send()
 
 @cl.on_message
 async def on_message(message: cl.Message):
@@ -580,7 +645,22 @@ async def on_message(message: cl.Message):
             return
 
         ctx.add_message("user", user_text)
-        
+
+        current_mode = cl.user_session.get(DEEP_RESEARCH_SESSION_KEY, DEFAULT_MODE)
+        deep_mode = current_mode == "deep" and AppConfig.ENABLE_DEEP_RESEARCH
+
+        if deep_mode:
+            await cl.Message("🔍 Performing Deep Research… this may take a moment.").send()
+            try:
+                response = await ors.run_deep_research(user_text)
+                await present_enhanced_response(response)
+                return
+            except Exception as exc:
+                logger.exception("Deep Research execution failed: %s", exc)
+                await cl.Message(
+                    "⚠️ Deep Research encountered an error. Falling back to the standard analysis pipeline for this request."
+                ).send()
+
         # Check if enhanced system is enabled
         enhanced_enabled = os.getenv("ENABLE_ENHANCED_SYSTEM", "true").lower() in ("1", "true", "yes")
         
