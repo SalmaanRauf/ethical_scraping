@@ -117,6 +117,13 @@ The formatted payload contains:
 - Lightweight numeric validator to cross-check large dollar amounts across multiple citations.
 - Export endpoints (PDF/PPT/CSV) that consume the formatted response payload.
 - Automated smoke tests for the intent router and task executor.
+- Deep Research UX polish (mode-switch shortcuts, richer trace visualization).
+
+## 12. Deep Research Mode
+- **Purpose**: Opt-in workflow that routes requests through the Azure AI Foundry Deep Research tool (o3-deep-research + Bing Grounding). Suitable for open-ended market studies or multi-hop questions.
+- **Enablement**: Set `ENABLE_DEEP_RESEARCH=true` and supply `DEEP_RESEARCH_MODEL_DEPLOYMENT_NAME` + `BING_CONNECTION_NAME` in `.env`. Users can toggle between Standard and Deep modes via the Chainlit action buttons.
+- **Behaviour**: When engaged, Chainlit posts a single status message (`Performing Deep Research…`) and withholds intermediate streaming until the final report is ready. Findings are rendered with summarized sections, citations, and run metadata (thread/run identifiers) for audit.
+- **Logging**: Run/Thread IDs are emitted at INFO level; errors fall back to the standard orchestrator with a user-facing warning.
 
 ---
 
