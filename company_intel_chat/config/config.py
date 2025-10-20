@@ -33,6 +33,13 @@ class Config:
     MODEL_DEPLOYMENT_NAME = os.getenv("MODEL_DEPLOYMENT_NAME")
     AZURE_BING_CONNECTION_ID = os.getenv("AZURE_BING_CONNECTION_ID")
 
+    # Deep Research (Azure AI Foundry) configuration
+    DEEP_RESEARCH_MODEL_DEPLOYMENT_NAME = os.getenv("DEEP_RESEARCH_MODEL_DEPLOYMENT_NAME")
+    BING_CONNECTION_NAME = os.getenv("BING_CONNECTION_NAME")
+
+    # Feature flags
+    ENABLE_DEEP_RESEARCH = os.getenv("ENABLE_DEEP_RESEARCH", "false").lower() in ("1", "true", "yes")
+
     # --- Operational settings (timeouts, limits) ---
     # Timeout for independent GWBS scope fetches (seconds)
     GWBS_SCOPE_TIMEOUT_SECONDS = int(os.getenv("GWBS_SCOPE_TIMEOUT_SECONDS", "45"))
@@ -56,6 +63,13 @@ class Config:
         missing_keys = [key for key in required_keys if not getattr(cls, key)]
         if missing_keys:
             print(f"⚠️  Warning: Missing some API keys in .env file: {', '.join(missing_keys)}")
+        deep_missing = []
+        if cls.ENABLE_DEEP_RESEARCH:
+            for key in ("DEEP_RESEARCH_MODEL_DEPLOYMENT_NAME", "BING_CONNECTION_NAME"):
+                if not getattr(cls, key):
+                    deep_missing.append(key)
+        if deep_missing:
+            print(f"⚠️  Warning: Deep Research enabled but missing configuration: {', '.join(deep_missing)}")
         print("✅ Configuration, API keys, and operational settings are loaded.")
 
 # Instantiate the config
