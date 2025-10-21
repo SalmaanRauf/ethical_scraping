@@ -63,13 +63,25 @@ class Config:
         missing_keys = [key for key in required_keys if not getattr(cls, key)]
         if missing_keys:
             print(f"⚠️  Warning: Missing some API keys in .env file: {', '.join(missing_keys)}")
+        
+        # Enhanced Deep Research validation
         deep_missing = []
         if cls.ENABLE_DEEP_RESEARCH:
             for key in ("DEEP_RESEARCH_MODEL_DEPLOYMENT_NAME", "BING_CONNECTION_NAME"):
                 if not getattr(cls, key):
                     deep_missing.append(key)
-        if deep_missing:
-            print(f"⚠️  Warning: Deep Research enabled but missing configuration: {', '.join(deep_missing)}")
+            
+            if deep_missing:
+                print(f"⚠️  Warning: Deep Research enabled but missing configuration: {', '.join(deep_missing)}")
+                print("   Deep Research requires:")
+                print("   - DEEP_RESEARCH_MODEL_DEPLOYMENT_NAME: o3-deep-research model deployment name")
+                print("   - BING_CONNECTION_NAME: Azure Bing connection ID (not name)")
+                print("   - All resources must be in West US or Norway East region")
+            else:
+                print("✅ Deep Research configuration validated.")
+                print("   ⚠️  CRITICAL: Ensure all Azure resources (AI Project, o3-deep-research, gpt-4o)")
+                print("      are deployed in the SAME region (West US or Norway East only).")
+        
         print("✅ Configuration, API keys, and operational settings are loaded.")
 
 # Instantiate the config

@@ -5,14 +5,59 @@ This package is a clean, self-contained version of your Chainlit chat workflow f
 ## Quickstart
 
 - Create a `.env` from `env.example` and fill in the Azure/ATLAS keys.
-- Install: `pip install -r company_intel_chat/requirements.txt`
-- Run: `python company_intel_chat/launch_chainlit.py`
+- Install: `pip install -r requirements.txt`
+- Run: `python launch_chainlit.py`
 - Open: http://localhost:8000
 
-Environment variables:
-- Discovery (Bing Grounding): `PROJECT_ENDPOINT`, `MODEL_DEPLOYMENT_NAME`, `AZURE_BING_CONNECTION_ID`
-- Analysis (Semantic Kernel/ATLAS): `OPENAI_API_KEY`, `BASE_URL`, `PROJECT_ID`, `API_VERSION`, `MODEL`
-- Feature flag: `ENABLE_TOOL_ORCHESTRATOR` (on by default in `env.example`)
+### Required Environment Variables (Standard Mode)
+- **Discovery (Bing Grounding)**: `PROJECT_ENDPOINT`, `MODEL_DEPLOYMENT_NAME`, `AZURE_BING_CONNECTION_ID`
+- **Analysis (Semantic Kernel/ATLAS)**: `OPENAI_API_KEY`, `BASE_URL`, `PROJECT_ID`, `API_VERSION`, `MODEL`
+- **Feature flag**: `ENABLE_TOOL_ORCHESTRATOR` (on by default in `env.example`)
+
+### Additional Configuration for Deep Research Mode (Optional)
+
+Deep Research mode uses Azure AI Foundry's managed Deep Research tool with the `o3-deep-research` model for multi-hop, iterative research.
+
+#### Prerequisites
+1. **Azure Subscription** with access to Azure AI Foundry
+2. **Model Access**: Request access to o3 model family at https://aka.ms/OAI/deepresearchaccess
+3. **RBAC**: Ensure your account has "Azure AI User" role on the AI Foundry Project
+
+#### Critical Regional Requirements ⚠️
+**ALL** of the following resources **MUST** be in the **SAME** region (West US or Norway East):
+- Azure AI Foundry Resource
+- Azure AI Foundry Project
+- `o3-deep-research` model deployment (version 2025-06-26)
+- `gpt-4o` model deployment (used for intent clarification)
+
+Failure to co-locate resources will result in `(unsupported_tool)` errors.
+
+#### Setup Steps
+1. **Create Azure AI Foundry Resource** in West US or Norway East
+2. **Create Azure AI Foundry Project** in the same region
+3. **Create Grounding with Bing Search resource**:
+   ```bash
+   # Register Microsoft.Bing provider if needed
+   az provider register --namespace 'Microsoft.Bing'
+   ```
+4. **Connect Bing to AI Project**:
+   - Navigate to Azure AI Foundry Project → Connected resources
+   - Add connection to your Bing Grounding resource
+   - Copy the **Connection ID** (not the display name)
+5. **Deploy Models** in the **same region**:
+   - Deploy `o3-deep-research` (version 2025-06-26)
+   - Deploy `gpt-4o`
+6. **Configure Environment Variables**:
+   ```bash
+   ENABLE_DEEP_RESEARCH=true
+   DEEP_RESEARCH_MODEL_DEPLOYMENT_NAME=<your-o3-deployment-name>
+   BING_CONNECTION_NAME=<bing-connection-id-from-step-4>
+   ```
+
+#### Switching Between Modes
+- Users can toggle between Standard and Deep Research modes via the Chainlit UI
+- Deep Research mode automatically falls back to Standard mode on errors
+- Check logs for detailed error messages if Deep Research fails
 
 ## What It Does
 

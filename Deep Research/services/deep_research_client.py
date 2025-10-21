@@ -77,29 +77,62 @@ class DeepResearchClient:
     async def _ensure_agent(self) -> None:
         if self._agent_id or not self._client:
             return
-        deep_tool = DeepResearchToolDefinition(
-            deep_research=DeepResearchDetails(
-                deep_research_model=self._deep_model,
-                deep_research_bing_grounding_connections=[
-                    DeepResearchBingGroundingConnection(connection_id=self._bing_connection)
-                ],
+        
+        try:
+            deep_tool = DeepResearchToolDefinition(
+                deep_research=DeepResearchDetails(
+                    model=self._deep_model,
+                    bing_grounding_connections=[
+                        DeepResearchBingGroundingConnection(connection_id=self._bing_connection)
+                    ],
+                )
             )
-        )
-        logger.info("Creating Deep Research agent")
-        agent = await self._client.agents.create_agent(
-            model=self._primary_model,
-            name="deep-research-agent",
-            instructions=(
-                "You are a research analyst. Always produce a concise summary followed by structured sections. "
-                "Ensure every key fact is supported by citations."
-            ),
-            tools=[deep_tool],
-        )
-        self._agent_id = agent.id
-        logger.info("Deep Research agent created: %s", agent.id)
+            logger.info("Creating Deep Research agent")
+            agent = await self._client.agents.create_agent(
+                model=self._primary_model,
+                name="deep-research-agent",
+                instructions=(
+                    "You are a research analyst. Always produce a concise summary followed by structured sections. "
+                    "Ensure every key fact is supported by citations."
+                ),
+                tools=[deep_tool],
+            )
+            self._agent_id = agent.id
+            logger.info("Deep Research agent created: %s", agent.id)
+            
+        except TypeError as e:
+            logger.error("Deep Research agent creation failed due to SDK parameter mismatch")
+            logger.error("SDK Error: %s", str(e))
+            logger.error("Ensure azure-ai-agents SDK version is compatible (current requirement: >=1.0.0b7)")
+            logger.error("Configuration used:")
+            logger.error("  - Primary model: %s", self._primary_model)
+            logger.error("  - Deep Research model: %s", self._deep_model)
+            logger.error("  - Bing connection: %s", self._bing_connection[:20] + "..." if len(self._bing_connection) > 20 else self._bing_connection)
+            raise RuntimeError(
+                "Failed to create Deep Research agent. "
+                "This is likely due to an SDK version mismatch or incorrect parameter names. "
+                "Check logs for details and verify Azure AI Agents SDK version."
+            ) from e
+        except Exception as e:
+            logger.error("Unexpected error creating Deep Research agent: %s", str(e))
+            raise
 
     async def run(self, query: str) -> DeepResearchReport:
-        await self._ensure_client()
+        try:
+            await self._ensure_client()
+        except Exception as e:
+            logger.error("Failed to initialize Deep Research client: %s", str(e))
+            raise RuntimeError(
+                "Deep Research client initialization failed. "
+                "Verify your Azure configuration:\n"
+                "  1. PROJECT_ENDPOINT is set and accessible\n"
+                "  2. MODEL_DEPLOYMENT_NAME points to a gpt-4o deployment\n"
+                "  3. DEEP_RESEARCH_MODEL_DEPLOYMENT_NAME points to o3-deep-research\n"
+                "  4. BING_CONNECTION_NAME is the connection ID (not name)\n"
+                "  5. All resources are in the same region (West US or Norway East)\n"
+                f"Original error: {str(e)}"
+            ) from e
+        
         assert self._client and self._agent_id
 
         logger.info("Deep Research run started", extra={"query": query})
@@ -119,11 +152,28 @@ class DeepResearchClient:
             )
         except AzureError as exc:
             logger.exception("Deep Research run failed to start: %s", exc)
+            error_msg = str(exc)
+            if "unsupported_tool" in error_msg.lower():
+                raise RuntimeError(
+                    "Deep Research tool not supported in this configuration. "
+                    "Common causes:\n"
+                    "  1. Resource region mismatch (must all be in West US or Norway East)\n"
+                    "  2. o3-deep-research model not deployed in the same region as AI Project\n"
+                    "  3. gpt-4o model not deployed in the same region\n"
+                    "  4. Bing connection not properly linked to AI Project\n"
+                    f"Azure error: {error_msg}"
+                ) from exc
             raise
 
         if run.status != "completed":
             logger.error("Deep Research run ended with status %s", run.status)
-            raise RuntimeError(f"Deep Research run incomplete: {run.status}")
+            error_details = getattr(run, 'last_error', None)
+            if error_details:
+                logger.error("Run error details: %s", error_details)
+            raise RuntimeError(
+                f"Deep Research run incomplete: {run.status}\n"
+                f"Details: {error_details if error_details else 'No additional details available'}"
+            )
 
         messages = await self._client.agents.messages.list(thread_id=thread.id)
         agent_message = next(
