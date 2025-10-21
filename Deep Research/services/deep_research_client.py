@@ -81,8 +81,8 @@ class DeepResearchClient:
         try:
             deep_tool = DeepResearchToolDefinition(
                 deep_research=DeepResearchDetails(
-                    model=self._deep_model,
-                    bing_grounding_connections=[
+                    deep_research_model=self._deep_model,
+                    deep_research_bing_grounding_connections=[
                         DeepResearchBingGroundingConnection(connection_id=self._bing_connection)
                     ],
                 )
@@ -103,15 +103,22 @@ class DeepResearchClient:
         except TypeError as e:
             logger.error("Deep Research agent creation failed due to SDK parameter mismatch")
             logger.error("SDK Error: %s", str(e))
-            logger.error("Ensure azure-ai-agents SDK version is compatible (current requirement: >=1.0.0b7)")
+            try:
+                import azure.ai.agents
+                sdk_version = getattr(azure.ai.agents, '__version__', 'unknown')
+                logger.error("Installed azure-ai-agents version: %s", sdk_version)
+            except Exception:
+                logger.error("Could not determine azure-ai-agents version")
             logger.error("Configuration used:")
             logger.error("  - Primary model: %s", self._primary_model)
             logger.error("  - Deep Research model: %s", self._deep_model)
             logger.error("  - Bing connection: %s", self._bing_connection[:20] + "..." if len(self._bing_connection) > 20 else self._bing_connection)
+            logger.error("Expected parameters for DeepResearchDetails: deep_research_model, deep_research_bing_grounding_connections")
             raise RuntimeError(
-                "Failed to create Deep Research agent. "
-                "This is likely due to an SDK version mismatch or incorrect parameter names. "
-                "Check logs for details and verify Azure AI Agents SDK version."
+                "Failed to create Deep Research agent due to SDK parameter mismatch. "
+                "The code has been updated to use the correct parameter names: "
+                "'deep_research_model' and 'deep_research_bing_grounding_connections'. "
+                "Check logs for details."
             ) from e
         except Exception as e:
             logger.error("Unexpected error creating Deep Research agent: %s", str(e))
