@@ -102,12 +102,44 @@ To verify the SDK parameters in the future:
 python -c "from azure.ai.agents.models import DeepResearchDetails; import inspect; print([attr for attr in dir(DeepResearchDetails) if not attr.startswith('_')])"
 ```
 
+## Additional Fix: AsyncItemPaged Iterator Issue
+
+### Problem (discovered after initial fix)
+After the agent successfully ran Deep Research for 9 minutes, it failed when retrieving results:
+```
+TypeError: object AsyncItemPaged can't be used in 'await' expression
+```
+
+### Root Cause
+The Azure SDK's `messages.list()` method returns an `AsyncItemPaged` object (an async paginated iterator), not an awaitable coroutine. You must iterate over it using `async for`, not `await` it directly.
+
+### The Fix
+**Location:** `services/deep_research_client.py`, line ~185
+
+**Changed From:**
+```python
+messages = await self._client.agents.messages.list(thread_id=thread.id)  # ❌ Wrong
+```
+
+**Changed To:**
+```python
+# messages.list() returns AsyncItemPaged (an async iterator), not an awaitable
+messages = []
+async for message in self._client.agents.messages.list(thread_id=thread.id):
+    messages.append(message)
+
+logger.info(f"Retrieved {len(messages)} messages from thread")  # ✅ Correct
+```
+
+This is the correct pattern for handling Azure SDK paginated async results.
+
 ## Next Steps
 
 1. ✅ Parameter names are now correct
 2. ✅ Error handling is improved
-3. ⏳ Test by running the application
-4. ⏳ Verify Deep Research mode works end-to-end
+3. ✅ AsyncItemPaged iterator issue fixed
+4. ⏳ Test by running the application again
+5. ⏳ Verify Deep Research mode works end-to-end and returns results
 
 ## Apology
 

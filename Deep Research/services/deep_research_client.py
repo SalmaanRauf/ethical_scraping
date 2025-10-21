@@ -182,7 +182,13 @@ class DeepResearchClient:
                 f"Details: {error_details if error_details else 'No additional details available'}"
             )
 
-        messages = await self._client.agents.messages.list(thread_id=thread.id)
+        # messages.list() returns AsyncItemPaged (an async iterator), not an awaitable
+        messages = []
+        async for message in self._client.agents.messages.list(thread_id=thread.id):
+            messages.append(message)
+        
+        logger.info(f"Retrieved {len(messages)} messages from thread")
+        
         agent_message = next(
             (m for m in messages if getattr(m, "role", "").lower() == "assistant"),
             None,
