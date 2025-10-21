@@ -80,7 +80,7 @@ class DeepResearchClient:
         deep_tool = DeepResearchToolDefinition(
             deep_research=DeepResearchDetails(
                 deep_research_model=self._deep_model,
-                bing_grounding_connections=[
+                deep_research_bing_grounding_connections=[
                     DeepResearchBingGroundingConnection(connection_id=self._bing_connection)
                 ],
             )
