@@ -79,7 +79,7 @@ class DeepResearchClient:
             return
         deep_tool = DeepResearchToolDefinition(
             deep_research=DeepResearchDetails(
-                model=self._deep_model,
+                deep_research_model=self._deep_model,
                 bing_grounding_connections=[
                     DeepResearchBingGroundingConnection(connection_id=self._bing_connection)
                 ],
@@ -197,4 +197,3 @@ def get_deep_research_client() -> DeepResearchClient:
     if deep_research_client is None:
         deep_research_client = DeepResearchClient()
     return deep_research_client
-
