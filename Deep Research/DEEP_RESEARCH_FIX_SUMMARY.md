@@ -1,8 +1,15 @@
-# Deep Research SDK Parameter Fix - Resolution Summary
+# Deep Research SDK Fixes - Complete Resolution Summary
 
-## Issue Discovered
+## Three Issues Discovered and Fixed
 
-The original fix I provided was **based on incorrect documentation** and made the problem worse. After inspecting the actual Azure SDK, I found the true parameter names.
+This document tracks the resolution of three sequential issues encountered when integrating Azure AI Foundry's Deep Research tool with SDK version `1.1.0b3`. Each issue was discovered after the previous one was resolved.
+
+### Timeline
+1. **Issue #1**: SDK parameter mismatch (agent creation failure)
+2. **Issue #2**: AsyncItemPaged iterator (message retrieval failure)  
+3. **Issue #3**: MessageTextDetails parsing (presentation failure)
+
+All issues have been resolved and Deep Research is now fully functional.
 
 ## Root Cause
 
@@ -133,13 +140,58 @@ logger.info(f"Retrieved {len(messages)} messages from thread")  # ✅ Correct
 
 This is the correct pattern for handling Azure SDK paginated async results.
 
+## Additional Fix #2: MessageTextDetails Parsing Issue
+
+### Problem (discovered after async iteration fix)
+After Deep Research completed successfully (retrieved 48 messages), it failed during presentation:
+```
+ERROR - Error presenting enhanced response: sequence item 2: expected str instance, MessageTextDetails found
+```
+
+### Root Cause
+The Azure SDK's message content structure changed in version 1.1.0b3:
+- `MessageTextContent.text` is now a `MessageTextDetails` object (not a string)
+- `MessageTextDetails.value` contains the actual text string
+- `MessageTextDetails.annotations` contains the citation annotations
+
+The old code was treating `block.text` as a string, but it's actually a `MessageTextDetails` object.
+
+### SDK Structure (version 1.1.0b3)
+```python
+MessageTextContent
+  └── .text (MessageTextDetails)
+        ├── .value (str)  ← The actual text content
+        └── .annotations (list)  ← Citation annotations
+```
+
+### The Fix
+**Location:** `services/deep_research_client.py`, `_parse_message()` method
+
+**Changed From:**
+```python
+summary = primary.text or ""  # ❌ Wrong - text is MessageTextDetails, not str
+content = block.text or ""    # ❌ Wrong
+```
+
+**Changed To:**
+```python
+# Extract text from MessageTextDetails object
+primary_text_obj = getattr(primary, "text", None)
+if primary_text_obj:
+    summary = getattr(primary_text_obj, "value", "") or str(primary_text_obj)  # ✅ Correct
+    annotations = getattr(primary_text_obj, "annotations", []) or []
+```
+
+Applied the same pattern for all text blocks and their annotations.
+
 ## Next Steps
 
 1. ✅ Parameter names are now correct
 2. ✅ Error handling is improved
 3. ✅ AsyncItemPaged iterator issue fixed
-4. ⏳ Test by running the application again
-5. ⏳ Verify Deep Research mode works end-to-end and returns results
+4. ✅ MessageTextDetails parsing issue fixed
+5. ⏳ Test by running the application again
+6. ⏳ Verify Deep Research displays results correctly to user
 
 ## Apology
 

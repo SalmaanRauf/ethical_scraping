@@ -212,8 +212,14 @@ class DeepResearchClient:
             return DeepResearchReport(summary=summary, sections=[], citations=[], metadata={})
 
         primary = text_blocks[0]
-        summary = primary.text or ""
-        annotations = getattr(primary, "annotations", []) or []
+        # Extract text: primary.text is a MessageTextDetails object with .value attribute
+        primary_text_obj = getattr(primary, "text", None)
+        if primary_text_obj:
+            summary = getattr(primary_text_obj, "value", "") or str(primary_text_obj)
+            annotations = getattr(primary_text_obj, "annotations", []) or []
+        else:
+            summary = ""
+            annotations = []
 
         citations = []
         for annotation in annotations:
@@ -227,16 +233,27 @@ class DeepResearchClient:
             if getattr(block, "type", "") != "text":
                 continue
             heading = getattr(block, "name", "") or "Additional Findings"
+            
+            # Extract text from MessageTextDetails
+            block_text_obj = getattr(block, "text", None)
+            if block_text_obj:
+                block_content = getattr(block_text_obj, "value", "") or str(block_text_obj)
+                block_annotations = getattr(block_text_obj, "annotations", []) or []
+            else:
+                block_content = ""
+                block_annotations = []
+            
             block_citations = []
-            for annotation in getattr(block, "annotations", []) or []:
+            for annotation in block_annotations:
                 uri = getattr(getattr(annotation, "uri_citation", None), "uri", None)
                 title = getattr(getattr(annotation, "uri_citation", None), "title", None) or uri or "Source"
                 if uri:
                     block_citations.append(DeepResearchCitation(title=title, url=uri))
+            
             sections.append(
                 DeepResearchSection(
                     heading=heading,
-                    content=block.text or "",
+                    content=block_content,
                     citations=block_citations,
                 )
             )
