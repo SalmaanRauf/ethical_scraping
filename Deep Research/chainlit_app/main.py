@@ -586,10 +586,18 @@ async def start():
         )
         await cl.Message(welcome_msg).send()
 
-        current_mode = cl.user_session.get(DEEP_RESEARCH_SESSION_KEY, DEFAULT_MODE)
+        current_mode = cl.user_session.get(DEEP_RESEARCH_SESSION_KEY)
         if current_mode not in {"standard", "deep"}:
-            current_mode = DEFAULT_MODE
-        cl.user_session.set(DEEP_RESEARCH_SESSION_KEY, current_mode)
+            current_mode = "deep" if AppConfig.ENABLE_DEEP_RESEARCH else DEFAULT_MODE
+            cl.user_session.set(DEEP_RESEARCH_SESSION_KEY, current_mode)
+        logger.info(
+            "Session initialized",
+            extra={
+                "session_id": cl.user_session.get("session_id"),
+                "initial_mode": current_mode,
+                "feature_flag": AppConfig.ENABLE_DEEP_RESEARCH,
+            },
+        )
 
         if AppConfig.ENABLE_DEEP_RESEARCH:
             await cl.AskActionMessage(
@@ -625,13 +633,11 @@ async def update_mode(action: cl.Action):
     selected = payload_mode or action.value or DEFAULT_MODE
     session_id = cl.user_session.get("session_id")
     logger.info(
-        "Mode action received",
-        extra={
-            "payload": action.payload,
-            "value": action.value,
-            "resolved": selected,
-            "session_id": session_id,
-        },
+        "Mode action received payload=%s value=%s resolved=%s session=%s",
+        action.payload,
+        action.value,
+        selected,
+        session_id,
     )
     if selected == "deep" and not AppConfig.ENABLE_DEEP_RESEARCH:
         await cl.Message("Deep Research is not enabled in this environment.").send()
@@ -640,11 +646,9 @@ async def update_mode(action: cl.Action):
 
     cl.user_session.set(DEEP_RESEARCH_SESSION_KEY, selected)
     logger.info(
-        "Mode updated in session",
-        extra={
-            "session_id": session_id,
-            "stored_value": cl.user_session.get(DEEP_RESEARCH_SESSION_KEY),
-        },
+        "Mode updated session=%s stored=%s",
+        session_id,
+        cl.user_session.get(DEEP_RESEARCH_SESSION_KEY),
     )
     label = "Deep Research" if selected == "deep" else "Standard Analysis"
     await cl.Message(f"✅ Mode updated: **{label}**").send()
@@ -675,12 +679,10 @@ async def on_message(message: cl.Message):
 
         current_mode = cl.user_session.get(DEEP_RESEARCH_SESSION_KEY, DEFAULT_MODE)
         logger.info(
-            "Deep research mode check",
-            extra={
-                "session_id": cl.user_session.get("session_id"),
-                "mode_value": current_mode,
-                "feature_flag": AppConfig.ENABLE_DEEP_RESEARCH,
-            },
+            "Deep research mode check session=%s mode=%s feature_flag=%s",
+            cl.user_session.get("session_id"),
+            current_mode,
+            AppConfig.ENABLE_DEEP_RESEARCH,
         )
         deep_mode = current_mode == "deep" and AppConfig.ENABLE_DEEP_RESEARCH
 
