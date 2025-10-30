@@ -14,8 +14,7 @@ You are a strategic account leader. Generate a concise, actionable company summa
 - Highlight leverageable relationships (buyers, alumni), and current project in-roads
 - Suggest new areas of opportunity for upsell/cross-sell or to deepen relationship
 - List next recommended action items (specific outreach, intro, opportunity pursuit)
-- Preserve important source URLs for credibility and follow-up research
-- Keep summary to under 150 words if possible
+- Preserve ALL source URLs for credibility and follow-up research
 
 Respond ONLY with a valid JSON object and NOTHING ELSE.
 Do NOT include code fences (```) or language tags.

@@ -384,6 +384,8 @@ async def run_deep_research(query: str) -> Dict[str, Any]:
 
     sections: List[Dict[str, Any]] = []
     combined = _to_citations(report.citations)
+    
+    logger.info(f"Deep Research report has {len(report.citations)} top-level citations")
 
     for section in report.sections:
         section_cites = [c.dict() for c in _to_citations(section.citations)]
@@ -395,12 +397,18 @@ async def run_deep_research(query: str) -> Dict[str, Any]:
                 "citations": section_cites,
             }
         )
+    
+    deduped_citations = _dedupe(combined)
+    logger.info(f"Total citations after deduplication: {len(deduped_citations)}")
+    
+    if deduped_citations:
+        logger.debug(f"Sample citations: {[c.url for c in deduped_citations[:3]]}")
 
     response = {
         "type": "deep_research",
         "summary": report.summary,
         "sections": sections,
-        "citations": [c.dict() for c in _dedupe(combined)],
+        "citations": [c.dict() for c in deduped_citations],
         "metadata": report.metadata,
     }
     return response

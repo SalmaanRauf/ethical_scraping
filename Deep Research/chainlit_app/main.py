@@ -149,6 +149,17 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
     try:
         response_type = response.get("type", "unknown")
         
+        # Define helper functions at the top so they're available for all response types
+        async def _send_sources(citations, heading="Sources"):
+            if not citations:
+                return
+            lines = [f"**{heading}:**"]
+            for citation in citations[:10]:
+                title = citation.get("title", "Source")
+                url = citation.get("url", "#")
+                lines.append(f"• [{title}]({url})")
+            await cl.Message("\n".join(lines)).send()
+        
         if response_type == "error":
             error_msg = response.get("error", "Unknown error")
             details = response.get("details", [])
@@ -197,16 +208,6 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
                 if candidate in profiles_cache:
                     return profiles_cache[candidate]
             return None
-
-        async def _send_sources(citations, heading="Sources"):
-            if not citations:
-                return
-            lines = [f"**{heading}:**"]
-            for citation in citations[:10]:
-                title = citation.get("title", "Source")
-                url = citation.get("url", "#")
-                lines.append(f"• [{title}]({url})")
-            await cl.Message("\n".join(lines)).send()
 
         async def _present_events(company: str, events: List[Dict[str, Any]], summary: str = ""):
             if not events:
