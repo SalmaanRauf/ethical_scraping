@@ -1,3 +1,4 @@
+"""
 Tool-centric orchestrators for the Chainlit chat experience.
 """
 from __future__ import annotations
@@ -263,7 +264,7 @@ async def follow_up_research(
             if progress:
                 try:
                     scope_name = scope_task_map.get(fut, "Unknown").replace('_', ' ').title()
-                    await progress(f"â ï¸ {scope_name} failed - continuing with available data")
+                    await progress(f"â ï¸ {scope_name} failed - continuing with available data")
                 except Exception as e:
                     logger.warning(f"Error progress callback failed: {e}")
 

@@ -191,9 +191,12 @@ class DeepResearchClient:
                 f"Details: {error_details if error_details else 'No additional details available'}"
             )
 
-        # Get the initial response
+        # Get the initial response (most recent assistant message)
         messages = []
-        async for message in self._client.agents.messages.list(thread_id=thread.id):
+        async for message in self._client.agents.messages.list(
+            thread_id=thread.id,
+            order="desc",  # ensure newest-first so we pick the final assistant reply
+        ):
             messages.append(message)
         
         logger.info(f"Retrieved {len(messages)} messages from thread")
@@ -283,9 +286,31 @@ class DeepResearchClient:
     def _parse_message(self, message) -> DeepResearchReport:
         contents = getattr(message, "content", []) or []
         text_blocks = [block for block in contents if getattr(block, "type", "") == "text"]
+
+        # Collect message-level URL citations (new Deep Research SDK shape)
+        message_level_citations: List[DeepResearchCitation] = []
+        for ann in getattr(message, "url_citation_annotations", []) or []:
+            url_citation_obj = getattr(ann, "url_citation", None)
+            url = getattr(url_citation_obj, "url", None) if url_citation_obj else None
+            title = (
+                getattr(url_citation_obj, "title", None) or url or "Source"
+                if url_citation_obj
+                else None
+            )
+            if url:
+                message_level_citations.append(
+                    DeepResearchCitation(title=title or url, url=url)
+                )
+
         if not text_blocks:
+            # Fallback for unexpected shapes: still return any message-level URLs we found
             summary = getattr(message, "text", "") or ""
-            return DeepResearchReport(summary=summary, sections=[], citations=[], metadata={})
+            return DeepResearchReport(
+                summary=summary,
+                sections=[],
+                citations=message_level_citations,
+                metadata={},
+            )
 
         primary = text_blocks[0]
         # Extract text: primary.text is a MessageTextDetails object with .value attribute
@@ -297,14 +322,29 @@ class DeepResearchClient:
             summary = ""
             annotations = []
 
-        citations = []
-        for annotation in annotations:
-            uri = getattr(getattr(annotation, "uri_citation", None), "uri", None)
-            title = getattr(getattr(annotation, "uri_citation", None), "title", None) or uri or "Source"
-            if uri:
-                citations.append(DeepResearchCitation(title=title, url=uri))
+        # Start from message-level citations and then add any text-level ones
+        citations: List[DeepResearchCitation] = list(message_level_citations)
 
-        sections = []
+        # Handle both new url_citation and older uri_citation shapes for compatibility
+        for annotation in annotations:
+            url = None
+            title = None
+
+            url_citation_obj = getattr(annotation, "url_citation", None)
+            if url_citation_obj is not None:
+                url = getattr(url_citation_obj, "url", None)
+                title = getattr(url_citation_obj, "title", None) or url or "Source"
+            else:
+                # Backwards compatibility with older preview builds that used uri_citation
+                uri_citation_obj = getattr(annotation, "uri_citation", None)
+                if uri_citation_obj is not None:
+                    url = getattr(uri_citation_obj, "uri", None)
+                    title = getattr(uri_citation_obj, "title", None) or url or "Source"
+
+            if url:
+                citations.append(DeepResearchCitation(title=title or url, url=url))
+
+        sections: List[DeepResearchSection] = []
         for block in contents[1:]:
             if getattr(block, "type", "") != "text":
                 continue
@@ -319,12 +359,26 @@ class DeepResearchClient:
                 block_content = ""
                 block_annotations = []
             
-            block_citations = []
+            block_citations: List[DeepResearchCitation] = []
             for annotation in block_annotations:
-                uri = getattr(getattr(annotation, "uri_citation", None), "uri", None)
-                title = getattr(getattr(annotation, "uri_citation", None), "title", None) or uri or "Source"
-                if uri:
-                    block_citations.append(DeepResearchCitation(title=title, url=uri))
+                b_url = None
+                b_title = None
+
+                b_url_citation_obj = getattr(annotation, "url_citation", None)
+                if b_url_citation_obj is not None:
+                    b_url = getattr(b_url_citation_obj, "url", None)
+                    b_title = getattr(b_url_citation_obj, "title", None) or b_url or "Source"
+                else:
+                    # Backwards compatibility with older preview builds
+                    b_uri_citation_obj = getattr(annotation, "uri_citation", None)
+                    if b_uri_citation_obj is not None:
+                        b_url = getattr(b_uri_citation_obj, "uri", None)
+                        b_title = getattr(b_uri_citation_obj, "title", None) or b_url or "Source"
+
+                if b_url:
+                    block_citations.append(
+                        DeepResearchCitation(title=b_title or b_url, url=b_url)
+                    )
             
             sections.append(
                 DeepResearchSection(
@@ -334,7 +388,12 @@ class DeepResearchClient:
                 )
             )
 
-        return DeepResearchReport(summary=summary, sections=sections, citations=citations, metadata={})
+        return DeepResearchReport(
+            summary=summary,
+            sections=sections,
+            citations=citations,
+            metadata={},
+        )
 
     async def close(self) -> None:
         if self._client:
