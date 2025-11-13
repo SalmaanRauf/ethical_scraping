@@ -1,4 +1,3 @@
-# chainlit_app/main.py
 from __future__ import annotations
 import sys
 from pathlib import Path
@@ -157,22 +156,22 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
             for citation in citations[:10]:
                 title = citation.get("title", "Source")
                 url = citation.get("url", "#")
-                lines.append(f"• [{title}]({url})")
+                lines.append(f"â¢ [{title}]({url})")
             await cl.Message("\n".join(lines)).send()
         
         if response_type == "error":
             error_msg = response.get("error", "Unknown error")
             details = response.get("details", [])
-            error_text = f"❌ **Error**: {error_msg}"
+            error_text = f"â **Error**: {error_msg}"
             if details:
-                error_text += f"\n\n**Details**:\n" + "\n".join([f"• {detail}" for detail in details])
+                error_text += f"\n\n**Details**:\n" + "\n".join([f"â¢ {detail}" for detail in details])
             await cl.Message(error_text).send()
             return
         
         if response_type == "deep_research":
             summary = response.get("summary", "")
             sections = response.get("sections", []) or []
-            lines = ["# 🧠 Deep Research Findings", ""]
+            lines = ["# ð§  Deep Research Findings", ""]
             if summary:
                 lines.append(summary)
                 lines.append("")
@@ -195,7 +194,7 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
             if metadata.get("thread_id"):
                 meta_bits.append(f"Thread ID: `{metadata['thread_id']}`")
             if meta_bits:
-                await cl.Message("ℹ️ " + " | ".join(meta_bits)).send()
+                await cl.Message("â¹ï¸ " + " | ".join(meta_bits)).send()
             return
 
         profiles_cache = cl.user_session.get("company_profiles") or {}
@@ -212,7 +211,7 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
         async def _present_events(company: str, events: List[Dict[str, Any]], summary: str = ""):
             if not events:
                 return
-            lines = [f"# 📊 {company} — Comprehensive Analysis Results", ""]
+            lines = [f"# ð {company} â Comprehensive Analysis Results", ""]
             if summary:
                 lines.append(f"**Executive Summary:** {summary}")
                 lines.append("")
@@ -224,7 +223,7 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
                 insights = event.get("insights", {})
                 citations = event.get("citations", [])
 
-                lines.append(f"## 🔥 Event #{idx}: {title}")
+                lines.append(f"## ð¥ Event #{idx}: {title}")
                 lines.append("")
 
                 if isinstance(insights, dict):
@@ -238,7 +237,7 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
                         lines.append(f"**Why It Matters:** {why}")
                         lines.append("")
                     if consulting_angle:
-                        lines.append(f"**🎯 Consulting Angle:** {consulting_angle}")
+                        lines.append(f"**ð¯ Consulting Angle:** {consulting_angle}")
                         lines.append("")
 
                     detail_pairs = []
@@ -247,30 +246,30 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
                         if value:
                             detail_pairs.append((key.replace("_", " ").title(), value))
                     if detail_pairs:
-                        lines.append("**📈 Business Impact:**")
+                        lines.append("**ð Business Impact:**")
                         for label, value in detail_pairs:
                             lines.append(f"- **{label}:** {value}")
                         lines.append("")
 
                     categories = insights.get("service_categories")
                     if categories and isinstance(categories, list):
-                        lines.append(f"**🔧 Service Categories:** {', '.join(categories)}")
+                        lines.append(f"**ð§ Service Categories:** {', '.join(categories)}")
                         lines.append("")
 
                     industry_context = insights.get("industry_overview")
                     if industry_context:
-                        lines.append(f"**🌐 Industry Context:** {industry_context}")
+                        lines.append(f"**ð Industry Context:** {industry_context}")
                         lines.append("")
 
                     source_urls = insights.get("source_urls")
                     if source_urls and isinstance(source_urls, list):
-                        lines.append("**📚 Sources:**")
+                        lines.append("**ð Sources:**")
                         for url in source_urls[:10]:
                             lines.append(f"- {url}")
                         lines.append("")
 
                 if citations:
-                    lines.append("**📖 Additional Sources:**")
+                    lines.append("**ð Additional Sources:**")
                     for citation in citations[:10]:
                         title = citation.get("title", citation.get("url", "Source"))
                         url = citation.get("url", "#")
@@ -285,7 +284,7 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
         async def _present_raw_gwbs(company: str, raw_sections: List[Dict[str, Any]]):
             if not raw_sections:
                 return
-            lines = [f"# 🔍 Raw Research Results for {company}", "", "## Grounding with Bing Search (GWBS) Findings", ""]
+            lines = [f"# ð Raw Research Results for {company}", "", "## Grounding with Bing Search (GWBS) Findings", ""]
             for section in raw_sections:
                 title = section.get("title") or section.get("scope", "").replace("_", " ").title()
                 summary = section.get("summary", "")
@@ -330,7 +329,7 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
                     or []
                 )
 
-            lines = ["# 🧾 Account Context", ""]
+            lines = ["# ð§¾ Account Context", ""]
 
             description = profile.get("description") or profile.get("company_description")
             if description and description != "N/A":
@@ -364,7 +363,7 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
                 lines.append("**Key Buyers**")
                 for buyer in sorted_buyers[:2]:
                     name = buyer.get("name", "Unknown")
-                    lines.append(f"• {name}")
+                    lines.append(f"â¢ {name}")
                     if buyer.get("title"):
                         lines.append(f"  - Title: {buyer['title']}")
                     if buyer.get("emailAddress"):
@@ -398,9 +397,9 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
                                 if close_date:
                                     extra.append(close_date[:10])
                                 suffix = f" ({', '.join(extra)})" if extra else ""
-                                lines.append(f"    • {opp_name}{suffix}")
+                                lines.append(f"    â¢ {opp_name}{suffix}")
                             else:
-                                lines.append(f"    • {opp}")
+                                lines.append(f"    â¢ {opp}")
                     lines.append("")
 
             raw_alumni = _from_people("alumni") or _from_people("protiviti_alumni")
@@ -409,7 +408,7 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
                 for alum in raw_alumni[:3]:
                     if isinstance(alum, dict):
                         name = alum.get("name", "Unknown")
-                        lines.append(f"• {name}")
+                        lines.append(f"â¢ {name}")
                         if alum.get("title"):
                             lines.append(f"  - Title: {alum['title']}")
                         if alum.get("emailAddress"):
@@ -418,7 +417,7 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
                             lines.append(f"  - LinkedIn: {alum['linkedinUrl']}")
                         lines.append("")
                     else:
-                        lines.append(f"• {alum}")
+                        lines.append(f"â¢ {alum}")
                 if lines[-1] != "":
                     lines.append("")
 
@@ -434,9 +433,9 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
                             if value:
                                 details.append(str(value))
                         suffix = f" ({', '.join(details)})" if details else ""
-                        lines.append(f"• {name}{suffix}")
+                        lines.append(f"â¢ {name}{suffix}")
                     else:
-                        lines.append(f"• {opp}")
+                        lines.append(f"â¢ {opp}")
                 lines.append("")
 
             await cl.Message("\n".join(lines).rstrip()).send()
@@ -511,15 +510,15 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
         if execution_time > 0 or confidence > 0:
             metadata_text = ""
             if execution_time > 0:
-                metadata_text += f"⏱️ **Execution time**: {execution_time:.2f}s"
+                metadata_text += f"â±ï¸ **Execution time**: {execution_time:.2f}s"
             if confidence > 0:
-                metadata_text += f" | 🎯 **Confidence**: {confidence:.1%}"
+                metadata_text += f" | ð¯ **Confidence**: {confidence:.1%}"
             if metadata_text:
                 await cl.Message(metadata_text).send()
         
     except Exception as e:
         logger.error(f"Error presenting enhanced response: {e}")
-        await cl.Message("✅ Response generated successfully.").send()
+        await cl.Message("â Response generated successfully.").send()
 
 async def handle_old_system(qtype: QueryType, payload: Dict[str, Any], ctx: ConversationContext, 
                            bing_agent: BingDataExtractionAgent, analyst_agent: AnalystAgent, 
@@ -576,14 +575,14 @@ async def start():
         
         # Send welcome message
         welcome_msg = (
-            "👋 **Company Intelligence (Chat)**\n\n"
-            "• Type a company (e.g., Capital One or ticker COF) for a full analysis.\n"
-            "• Then ask follow-ups (risk, competitors, regulatory, strategy, timeline, etc.).\n"
-            "• I'll remember the context and only search when needed.\n\n"
+            "ð **Company Intelligence (Chat)**\n\n"
+            "â¢ Type a company (e.g., Capital One or ticker COF) for a full analysis.\n"
+            "â¢ Then ask follow-ups (risk, competitors, regulatory, strategy, timeline, etc.).\n"
+            "â¢ I'll remember the context and only search when needed.\n\n"
             "**New capabilities:**\n"
-            "• Ask about any company (not just hardcoded ones)\n"
-            "• General research questions (e.g., 'What are the top financial companies?')\n"
-            "• Mixed requests (e.g., 'Tell me about Tesla and its competitors')"
+            "â¢ Ask about any company (not just hardcoded ones)\n"
+            "â¢ General research questions (e.g., 'What are the top financial companies?')\n"
+            "â¢ Mixed requests (e.g., 'Tell me about Tesla and its competitors')"
         )
         await cl.Message(welcome_msg).send()
 
@@ -620,7 +619,7 @@ async def start():
             ).send()
         else:
             await cl.Message(
-                "🔧 Deep Research mode is unavailable in this environment. Running with the standard analysis pipeline."
+                "ð§ Deep Research mode is unavailable in this environment. Running with the standard analysis pipeline."
             ).send()
         
     except Exception as e:
@@ -652,7 +651,7 @@ async def update_mode(action: cl.Action):
         cl.user_session.get(DEEP_RESEARCH_SESSION_KEY),
     )
     label = "Deep Research" if selected == "deep" else "Standard Analysis"
-    await cl.Message(f"✅ Mode updated: **{label}**").send()
+    await cl.Message(f"â Mode updated: **{label}**").send()
 
 
 @cl.on_message
@@ -688,7 +687,7 @@ async def on_message(message: cl.Message):
         deep_mode = current_mode == "deep" and AppConfig.ENABLE_DEEP_RESEARCH
 
         if deep_mode:
-            await cl.Message("🔍 Performing Deep Research… this may take a moment.").send()
+            await cl.Message("ð Performing Deep Researchâ¦ this may take a moment.").send()
             try:
                 response = await ors.run_deep_research(user_text)
                 await present_enhanced_response(response)
@@ -696,7 +695,7 @@ async def on_message(message: cl.Message):
             except Exception as exc:
                 logger.exception("Deep Research execution failed: %s", exc)
                 await cl.Message(
-                    "⚠️ Deep Research encountered an error. Falling back to the standard analysis pipeline for this request."
+                    "â ï¸ Deep Research encountered an error. Falling back to the standard analysis pipeline for this request."
                 ).send()
 
         # Check if enhanced system is enabled
@@ -708,7 +707,7 @@ async def on_message(message: cl.Message):
                 logger.info("Using enhanced system for request")
                 response = await enhanced_user_request_handler(
                     user_text, ctx, bing_agent, analyst_agent, 
-                    progress=lambda msg: cl.Message(f"🔄 {msg}").send()
+                    progress=lambda msg: cl.Message(f"ð {msg}").send()
                 )
                 await present_enhanced_response(response)
                 return
@@ -749,12 +748,12 @@ async def handle_new_analysis(
     ticker = company_data.get("ticker")
     ctx.set_company(company, ticker)
 
-    await cl.Message(f"🔎 Running analysis on **{company}**…").send()
+    await cl.Message(f"ð Running analysis on **{company}**â¦").send()
 
     try:
         if os.getenv("ENABLE_TOOL_ORCHESTRATOR", "false").lower() in ("1", "true", "yes"):
             # Tool-centric orchestrator path
-            await cl.Message("🔄 Collecting GWBS sections (SEC, News, Procurement, Earnings, Industry)…").send()
+            await cl.Message("ð Collecting GWBS sections (SEC, News, Procurement, Earnings, Industry)â¦").send()
             cref = CompanyRef(name=company, ticker=ticker)
             briefing = await ors.full_company_analysis(cref, bing_agent=bing_agent, analyst_agent=analyst_agent)
 
@@ -773,7 +772,7 @@ async def handle_new_analysis(
 
             # Optional: if original_text includes competitor request, run competitor GWBS too
             if original_text and "competitor" in original_text.lower():
-                await cl.Message("🔍 Also searching for competitor information…").send()
+                await cl.Message("ð Also searching for competitor informationâ¦").send()
                 try:
                     comp_result = await ors.competitor_analysis(cref, bing_agent=bing_agent)
                     await cl.Message(f"**Competitor Analysis:**\n{comp_result.summary}").send()
@@ -782,7 +781,7 @@ async def handle_new_analysis(
 
         else:
             # Legacy path
-            await cl.Message("🔄 Running legacy analysis…").send()
+            await cl.Message("ð Running legacy analysisâ¦").send()
             # ... existing legacy code ...
 
     except Exception as e:
@@ -791,13 +790,13 @@ async def handle_new_analysis(
 async def handle_follow_up(ctx: ConversationContext, fup: FollowUpHandler, user_text: str):
     """Handle follow-up questions."""
     try:
-        await cl.Message("🔍 Searching for additional information…").send()
+        await cl.Message("ð Searching for additional informationâ¦").send()
         answer, citations = await fup.handle_follow_up(user_text, ctx)
         
         if answer:
             await cl.Message(answer).send()
             if citations:
-                citation_text = "**Sources:**\n" + "\n".join([f"• [{c.title}]({c.url})" for c in citations])
+                citation_text = "**Sources:**\n" + "\n".join([f"â¢ [{c.title}]({c.url})" for c in citations])
                 await cl.Message(citation_text).send()
         else:
             await cl.Message("I couldn't find specific information about that. Try asking more specifically.").send()
@@ -814,7 +813,7 @@ async def handle_company_comparison(payload: Dict[str, Any], ctx: ConversationCo
             await cl.Message("Please specify at least two companies to compare.").send()
             return
         
-        await cl.Message(f"🔍 Comparing **{companies[0]}** and **{companies[1]}**…").send()
+        await cl.Message(f"ð Comparing **{companies[0]}** and **{companies[1]}**â¦").send()
         
         # Run analysis for both companies
         for company in companies:
@@ -833,13 +832,13 @@ async def handle_general_research(payload: Dict[str, Any], bing_agent: BingDataE
             await cl.Message("Please specify what you'd like me to research.").send()
             return
         
-        await cl.Message("🔍 Researching your topic…").send()
+        await cl.Message("ð Researching your topicâ¦").send()
         summary, citations = await ors.general_research(prompt, bing_agent=bing_agent)
         
         if summary:
             await cl.Message(summary).send()
             if citations:
-                citation_text = "**Sources:**\n" + "\n".join([f"• [{c.title}]({c.url})" for c in citations])
+                citation_text = "**Sources:**\n" + "\n".join([f"â¢ [{c.title}]({c.url})" for c in citations])
                 await cl.Message(citation_text).send()
         else:
             await cl.Message("I couldn't find information on that topic. Please try rephrasing your question.").send()
@@ -881,4 +880,4 @@ async def present_briefing_results(briefing):
                 
     except Exception as e:
         logger.error(f"Error presenting briefing results: {e}")
-        await cl.Message("✅ Analysis completed successfully.").send()
+        await cl.Message("â Analysis completed successfully.").send()

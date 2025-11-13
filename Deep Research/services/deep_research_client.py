@@ -1,4 +1,3 @@
-"""Client wrapper for Azure AI Foundry Deep Research tool."""
 from __future__ import annotations
 
 import asyncio
@@ -92,8 +91,18 @@ class DeepResearchClient:
                 model=self._primary_model,
                 name="deep-research-agent",
                 instructions=(
-                    "You are a research analyst. Always produce a concise summary followed by structured sections. "
-                    "Ensure every key fact is supported by citations."
+                    "You are a senior research analyst specializing in data-driven intelligence gathering. "
+                    "Your task is to produce a concise, well-structured research summary with clear, evidence-backed findings. "
+                    "Follow these rules strictly:\n\n"
+                    "1. **Sourcing**: Every factual statement, claim, or data point must be supported by a verifiable public source. "
+                    "Always include the full URL for each source â do not omit any. "
+                    "Prefer authoritative and reputable domains (e.g., .gov, .mil, .edu, major news outlets, or industry reports).\n\n"
+                    "2. **Citation Format**: Present citations as numbered references in the text (e.g., [1]) and include a full 'Sources' section at the end "
+                    "listing all URLs clearly. If multiple facts come from the same source, reuse the same reference number.\n\n"
+                    "3. **Structure**: Begin with a short, high-level summary (3â5 sentences), followed by structured sections (e.g., Background, Findings, Analysis, Implications). "
+                    "End with a 'Sources' section that includes every URL you used.\n\n"
+                    "4. **Completeness**: Never provide unverifiable information. If a claim cannot be supported by a reliable source, clearly state that verification is unavailable.\n\n"
+                    "5. **Tone and Style**: Maintain a professional, objective, and concise tone suitable for executive briefings."
                 ),
                 tools=[deep_tool],
             )
@@ -182,7 +191,7 @@ class DeepResearchClient:
                 f"Details: {error_details if error_details else 'No additional details available'}"
             )
 
-        # messages.list() returns AsyncItemPaged (an async iterator), not an awaitable
+        # Get the initial response
         messages = []
         async for message in self._client.agents.messages.list(thread_id=thread.id):
             messages.append(message)
@@ -196,13 +205,80 @@ class DeepResearchClient:
         if not agent_message:
             raise RuntimeError("Deep Research produced no assistant message")
 
+        # Parse the initial report
         report = self._parse_message(agent_message)
+        
+        # MINIMAL ADDITION: Check for missing URLs and perform corrective search
+        if not report.citations or self._has_placeholder_citations(report):
+            logger.warning("Deep Research returned no proper URLs, attempting corrective URL search")
+            
+            # Simple, focused corrective query
+            url_followup_query = (
+                "IMPORTANT: Please provide the complete URLs for all sources referenced in your research. "
+                "I need the actual web addresses for verification."
+            )
+            
+            await self._client.agents.messages.create(
+                thread_id=thread.id,
+                role=MessageRole.USER,
+                content=url_followup_query,
+            )
+
+            try:
+                url_run = await self._client.agents.runs.create_and_process(
+                    thread_id=thread.id,
+                    agent_id=self._agent_id,
+                )
+
+                if url_run.status == "completed":
+                    # Get the URL-enhanced response
+                    url_messages = []
+                    async for message in self._client.agents.messages.list(thread_id=thread.id):
+                        url_messages.append(message)
+                    
+                    url_agent_message = next(
+                        (m for m in url_messages if getattr(m, "role", "").lower() == "assistant" and m.id != agent_message.id),
+                        None,
+                    )
+                    
+                    if url_agent_message:
+                        logger.info("Corrective URL search completed")
+                        url_report = self._parse_message(url_agent_message)
+                        
+                        # Only update if we got real URLs
+                        if url_report.citations and any(c.url.startswith(('http://', 'https://')) for c in url_report.citations):
+                            report.citations = url_report.citations
+                            logger.info(f"Added {len(url_report.citations)} URLs from corrective search")
+                else:
+                    logger.warning("Corrective URL search failed with status: %s", url_run.status)
+                    
+            except Exception as e:
+                logger.warning("Corrective URL search failed, continuing with original report: %s", e)
+                # Don't fail the entire request if corrective search fails
+
         report.metadata.update({
             "thread_id": thread.id,
             "run_id": run.id,
         })
-        logger.info("Deep Research run complete", extra=report.metadata)
+        
+        logger.info("Deep Research run complete", extra={
+            "citation_count": len(report.citations),
+            "has_urls": any(citation.url.startswith(('http://', 'https://')) for citation in report.citations) if report.citations else False
+        })
+        
         return report
+
+    def _has_placeholder_citations(self, report: DeepResearchReport) -> bool:
+        """Check if the report contains placeholder citations instead of real URLs."""
+        if not report.citations:
+            return True
+        
+        # Check if we have any real URLs
+        for citation in report.citations:
+            if citation.url.startswith(('http://', 'https://')):
+                return False
+        
+        return True
 
     def _parse_message(self, message) -> DeepResearchReport:
         contents = getattr(message, "content", []) or []
