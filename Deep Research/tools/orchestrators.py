@@ -186,7 +186,7 @@ async def follow_up_research(
             if hits:
                 hit_text, hit_cites = hits[0]
                 logger.info("Found matching context in cached briefing")
-                return hit_text[:1200], hit_cites[:8]
+                return hit_text[:1200], hit_cites
 
     if ctx_blob and isinstance(ctx_blob, dict):
         logger.debug(f"Context blob available with keys: {list(ctx_blob.keys())}")
@@ -212,7 +212,7 @@ async def follow_up_research(
         if hits:
             logger.info("Found matching context in analysis blob")
             hit_text, hit_cites = hits[0]
-            return hit_text[:1200], hit_cites[:8]
+            return hit_text[:1200], hit_cites
 
     label = classify_primary(question)
     scopes = scopes_for_label(label)
@@ -233,7 +233,7 @@ async def follow_up_research(
         if progress:
             try:
                 scope_name = scope.replace('_', ' ').title()
-                await progress(f"ð Searching {scope_name}...")
+                await progress(f"Ã°ÂÂÂ Searching {scope_name}...")
             except Exception as e:
                 logger.warning(f"Scope progress callback failed: {e}")
         logger.debug(f"Fetching GWBS scope: {scope}")
@@ -255,7 +255,7 @@ async def follow_up_research(
             if progress:
                 try:
                     scope_name = sec.scope.replace('_', ' ').title()
-                    await progress(f"â {scope_name} completed")
+                    await progress(f"Ã¢ÂÂ {scope_name} completed")
                 except Exception as e:
                     logger.warning(f"Completion progress callback failed: {e}")
         except Exception as fetch_err:
@@ -264,7 +264,7 @@ async def follow_up_research(
             if progress:
                 try:
                     scope_name = scope_task_map.get(fut, "Unknown").replace('_', ' ').title()
-                    await progress(f"â ï¸ {scope_name} failed - continuing with available data")
+                    await progress(f"Ã¢Â Ã¯Â¸Â {scope_name} failed - continuing with available data")
                 except Exception as e:
                     logger.warning(f"Error progress callback failed: {e}")
 
@@ -279,7 +279,7 @@ async def follow_up_research(
 
     if not body_parts:
         logger.warning("No content found in GWBS results")
-        return ("I couldn't find information that directly answers that. Try asking more specifically, or I can re-run a broader search.", citations_all[:8])
+        return ("I couldn't find information that directly answers that. Try asking more specifically, or I can re-run a broader search.", citations_all)
 
     if _needs_analyst(label, question):
         logger.info("Question requires analyst synthesis")
@@ -297,7 +297,7 @@ async def follow_up_research(
             events = await analyst_synthesis(items, analyst_agent)
         except Exception as synth_err:
             logger.error(f"Analyst synthesis failed: {synth_err}")
-            return ("There was an error generating a synthesized analyst answer. Please try again later.", citations_all[:8])
+            return ("There was an error generating a synthesized analyst answer. Please try again later.", citations_all)
         if events:
             e = events[0]
             what = e.insights.get("what_happened", "") if isinstance(e.insights, dict) else ""
@@ -306,7 +306,7 @@ async def follow_up_research(
             return combined or "", (e.citations or citations_all)[:8]
 
     logger.info(f"Returning GWBS response with {len(body_parts)} sections")
-    return ("\n\n".join(body_parts), citations_all[:8])
+    return ("\n\n".join(body_parts), citations_all)
     
 
 async def competitor_analysis(company: CompanyRef, *, bing_agent) -> GWBSSection:
@@ -355,7 +355,7 @@ async def general_research(prompt: str, *, bing_agent, progress: Optional[Callab
                     continue
                     
     logger.info(f"General research completed - found {len(cites)} citations")
-    return (raw or {}).get("summary", ""), cites[:8]
+    return (raw or {}).get("summary", ""), cites
 
 
 async def run_deep_research(query: str) -> Dict[str, Any]:
@@ -373,13 +373,31 @@ async def run_deep_research(query: str) -> Dict[str, Any]:
                 cites.append(Citation(title=entry.title or entry.url, url=entry.url))
         return cites
 
-    def _dedupe(items: List[Citation]) -> List[Citation]:
-        seen = set()
+    def _smart_dedupe(items: List[Citation]) -> List[Citation]:
+        """Smart deduplication that preserves domain diversity"""
+        seen_urls = set()
+        seen_domains = {}
         deduped: List[Citation] = []
+        
         for item in items:
-            if item.url not in seen:
+            # Extract domain for diversity tracking
+            try:
+                from urllib.parse import urlparse
+                domain = urlparse(item.url).netloc
+            except:
+                domain = "unknown"
+            
+            # Always keep first occurrence of each URL
+            if item.url not in seen_urls:
                 deduped.append(item)
-                seen.add(item.url)
+                seen_urls.add(item.url)
+                
+                # Track how many sources we have from each domain
+                seen_domains[domain] = seen_domains.get(domain, 0) + 1
+                
+        logger.info(f"Smart deduplication: {len(items)} -> {len(deduped)} citations across {len(seen_domains)} domains")
+        logger.info(f"Domain distribution: {dict(sorted(seen_domains.items(), key=lambda x: x[1], reverse=True)[:10])}")
+        
         return deduped
 
     sections: List[Dict[str, Any]] = []
@@ -398,17 +416,17 @@ async def run_deep_research(query: str) -> Dict[str, Any]:
             }
         )
     
-    deduped_citations = _dedupe(combined)
-    logger.info(f"Total citations after deduplication: {len(deduped_citations)}")
+    # Use smart deduplication instead of removing it entirely
+    all_citations = _smart_dedupe(combined)
     
-    if deduped_citations:
-        logger.debug(f"Sample citations: {[c.url for c in deduped_citations[:3]]}")
+    if all_citations:
+        logger.debug(f"Sample citations: {[c.url for c in all_citations[:3]]}")
 
     response = {
         "type": "deep_research",
         "summary": report.summary,
         "sections": sections,
-        "citations": [c.dict() for c in deduped_citations],
+        "citations": [c.dict() for c in all_citations],
         "metadata": report.metadata,
     }
     return response
@@ -451,7 +469,7 @@ async def enhanced_user_request_handler(
         
         # Resolve intent
         if progress:
-            await progress("ð Analyzing your request...")
+            await progress("Ã°ÂÂÂ Analyzing your request...")
         
         intent_type, intent_plan = await enhanced_router.route_enhanced(user_input, context)
 
@@ -471,7 +489,7 @@ async def enhanced_user_request_handler(
 
         # Execute tasks
         if progress:
-            await progress(f"ð Executing {len(intent_plan.tasks)} task(s)...")
+            await progress(f"Ã°ÂÂÂ Executing {len(intent_plan.tasks)} task(s)...")
         
         execution_result = await task_executor.execute_plan(
             intent_plan, context, bing_agent, analyst_agent
@@ -479,7 +497,7 @@ async def enhanced_user_request_handler(
         
         # Format response
         if progress:
-            await progress("ð Formatting response...")
+            await progress("Ã°ÂÂÂ Formatting response...")
         
         formatted_response = response_formatter.format_response(execution_result)
         
@@ -545,7 +563,7 @@ async def handle_general_research_request(
         general_orchestrator = initialize_general_research_orchestrator(bing_agent)
         
         if progress:
-            await progress("ð Researching your topic...")
+            await progress("Ã°ÂÂÂ Researching your topic...")
         
         # Execute general research
         summary, citations = await general_orchestrator.execute_general_research(user_input)
@@ -594,7 +612,7 @@ async def handle_any_company_request(
         company_ref = CompanyRef(name=company_name)
         
         if progress:
-            await progress(f"ð Analyzing {company_name}...")
+            await progress(f"Ã°ÂÂÂ Analyzing {company_name}...")
         
         # Execute full company analysis
         briefing = await full_company_analysis(

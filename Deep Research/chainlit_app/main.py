@@ -153,7 +153,8 @@ async def present_enhanced_response(response: Dict[str, Any]) -> None:
             if not citations:
                 return
             lines = [f"**{heading}:**"]
-            for citation in citations[:10]:
+            # Show ALL sources - extremely high limit
+            for citation in citations[:1000]:  # 1000 should be more than enough
                 title = citation.get("title", "Source")
                 url = citation.get("url", "#")
                 lines.append(f"â¢ [{title}]({url})")
