@@ -36,6 +36,11 @@ DEEP_RESEARCH_SESSION_KEY = "deep_research_mode"
 INDUSTRY_PROMPT_SESSION_KEY = "industry_prompt"
 DEFAULT_MODE = "standard"
 DEFAULT_INDUSTRY = "general"
+
+# Debug: Confirm callbacks are being defined at module load time
+print("=" * 80)
+print("MAIN.PY MODULE LOADING - CALLBACKS WILL BE REGISTERED BELOW")
+print("=" * 80)
 # --- Input validation helpers ---
 
 def validate_payload(payload: Dict[str, Any], required_keys: list[str]) -> tuple[bool, Optional[str]]:
@@ -603,6 +608,11 @@ async def start():
         )
 
         if AppConfig.ENABLE_DEEP_RESEARCH:
+            # Store loader in session for later use
+            from services.prompt_loader import PromptLoader
+            loader = PromptLoader()
+            cl.user_session.set("prompt_loader", loader)
+            
             await cl.AskActionMessage(
                 content="Select research mode (you can change this later):",
                 actions=[
@@ -620,30 +630,6 @@ async def start():
                     ),
                 ],
             ).send()
-            # Load and display industry prompt options
-            from services.prompt_loader import PromptLoader
-            loader = PromptLoader()
-            industries = loader.get_available_industries()
-            
-            actions = []
-            for key, meta in industries.items():
-                actions.append(
-                    cl.Action(
-                        name="set_industry",
-                        value=key,
-                        label=f"{meta['display_name']} v{meta['version']}",
-                        payload={"industry": key}
-                    )
-                )
-            
-            await cl.AskActionMessage(
-                content=(
-                    "**Step 2:** Select industry focus for Deep Research:\n\n"
-                    "This customizes the agent's expertise, data sources, and search strategy. "
-                    "Choose 'General' if researching across multiple industries."
-                ),
-                actions=actions
-            ).send()
 
         else:
             await cl.Message(
@@ -654,9 +640,13 @@ async def start():
         await handle_error(e, "chat_start", "Failed to initialize chat session. Please refresh and try again.")
 
 
+print("Registering @cl.action_callback('set_mode')")
+
 @cl.action_callback("set_mode")
 async def update_mode(action: cl.Action):
     """Handle mode selection actions."""
+    print(f"!!! update_mode CALLBACK TRIGGERED !!! action={action}")
+    logger.error(f"!!! update_mode CALLBACK TRIGGERED !!! action={action}")
     payload_mode = (action.payload or {}).get("mode") if hasattr(action, "payload") else None
     selected = payload_mode or action.value or DEFAULT_MODE
     session_id = cl.user_session.get("session_id")
@@ -680,13 +670,44 @@ async def update_mode(action: cl.Action):
     )
     label = "Deep Research" if selected == "deep" else "Standard Analysis"
     await cl.Message(f"  Mode updated: **{label}**").send()
+    
+    # If Deep Research mode selected, show industry selector
+    if selected == "deep":
+        from services.prompt_loader import PromptLoader
+        loader = PromptLoader()
+        industries = loader.get_available_industries()
+        
+        actions = []
+        for key, meta in industries.items():
+            actions.append(
+                cl.Action(
+                    name="set_industry",
+                    value=key,
+                    label=f"{meta['display_name']} v{meta['version']}",
+                    payload={"industry": key}
+                )
+            )
+        
+        await cl.AskActionMessage(
+            content=(
+                "**Step 2:** Select industry focus for Deep Research:\n\n"
+                "This customizes the agent's expertise, data sources, and search strategy. "
+                "Choose 'General' if researching across multiple industries."
+            ),
+            actions=actions
+        ).send()
+        logger.info("Industry selector sent to user")
 
 
+
+print("Registering @cl.action_callback('set_industry')")
 
 @cl.action_callback("set_industry")
 async def update_industry(action: cl.Action):
     """Handle industry prompt selection."""
     try:
+        print(f"!!! update_industry CALLBACK TRIGGERED !!! action={action}")
+        logger.error(f"!!! update_industry CALLBACK TRIGGERED !!! action={action}")
         logger.info(f"=== update_industry callback STARTED ===")
         logger.info(f"Action object: {action}")
         logger.info(f"Action.value: {action.value}")
