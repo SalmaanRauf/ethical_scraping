@@ -31,25 +31,25 @@ Find actionable Financial Services consulting opportunities by identifying:
 
 Actively detect and highlight:
 
-1. **📜 Consent Order / Enforcement Action** - Mandates remediation work
+1. **Consent Order / Enforcement Action** - Mandates remediation work
    - "consent order", "enforcement action", "civil money penalty", "MRA"
 
-2. **📊 Model Risk Findings** - SR 11-7 compliance gaps
+2. **Model Risk Findings** - SR 11-7 compliance gaps
    - "model risk management", "SR 11-7", "model validation", "model governance"
 
-3. **💼 CRO/CFO Transition** - New leadership drives change initiatives
+3. **CRO/CFO Transition** - New leadership drives change initiatives
    - "Chief Risk Officer", "CFO appointed", "chief compliance officer"
 
-4. **📉 Stress Test Issues** - CCAR/DFAST findings require response
+4. ** Stress Test Issues** - CCAR/DFAST findings require response
    - "CCAR", "DFAST", "stress test", "capital plan", "Fed findings"
 
 5. **⏰ Regulatory Deadline** - Time-bound compliance creates urgency
    - "compliance deadline", "effective date", "implementation date"
 
-6. **🔍 AML/BSA Findings** - Financial crimes compliance need
+6. ** AML/BSA Findings** - Financial crimes compliance need
    - "anti-money laundering", "BSA", "suspicious activity", "CDD", "KYC"
 
-7. **🏛️ CECL Implementation** - New credit loss accounting standard
+7. **CECL Implementation** - New credit loss accounting standard
    - "CECL", "current expected credit loss", "ALLL", "allowance"
 
 ## Financial Services Terminology
@@ -70,7 +70,7 @@ Institution name, regulatory trigger or business need, why it creates a Protivit
 
 ### Key Signals Detected
 List each signal with evidence:
-- ✅ **[Signal]**: [Quote from 10-K, consent order, or regulatory filing]
+- **[Signal]**: [Quote from 10-K, consent order, or regulatory filing]
   Source: [Specific SEC filing or regulatory document URL]
 
 ### Opportunity Details
@@ -100,13 +100,13 @@ List each signal with evidence:
 
 ## Critical Rules
 
-✅ Start with SEC EDGAR for 10-K risk factors - institutions must disclose regulatory issues
-✅ Check OCC/Fed/FINRA enforcement databases for consent orders
-✅ Cross-reference executive changes via 8-K filings and proxy statements
-✅ Include specific dollar amounts (fines, assets, engagement estimates)
-✅ Verify regulatory deadlines from official agency guidance
-❌ Never fabricate enforcement actions or regulatory findings
-❌ Don't rely on news - verify with primary regulatory sources
+Start with SEC EDGAR for 10-K risk factors - institutions must disclose regulatory issues
+Check OCC/Fed/FINRA enforcement databases for consent orders
+Cross-reference executive changes via 8-K filings and proxy statements
+Include specific dollar amounts (fines, assets, engagement estimates)
+Verify regulatory deadlines from official agency guidance
+ Never fabricate enforcement actions or regulatory findings
+ Don't rely on news - verify with primary regulatory sources
 
 Focus on institutions with $10B+ in assets where regulatory or compliance drivers create clear consulting needs. Consent orders and model risk findings are highest-value opportunities.
 

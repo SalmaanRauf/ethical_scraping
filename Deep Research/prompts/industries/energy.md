@@ -31,25 +31,25 @@ Find actionable Energy consulting opportunities by identifying:
 
 Actively detect and highlight:
 
-1. **⚡ NERC CIP Violation** - Mandates compliance remediation
+1. **NERC CIP Violation** - Mandates compliance remediation
    - "NERC violation", "CIP compliance", "penalty", "mitigation plan"
 
-2. **💰 DOE Funding Opportunity** - Grants and contracts for energy projects
+2. **DOE Funding Opportunity** - Grants and contracts for energy projects
    - "DOE solicitation", "ARPA-E", "EERE funding", "Grid Office RFP"
 
-3. **📜 FERC Order / Compliance Mandate** - Regulatory requirement
+3. **FERC Order / Compliance Mandate** - Regulatory requirement
    - "FERC Order", "compliance filing", "tariff revision", "RTO requirement"
 
-4. **🔌 Grid Modernization Project** - Technology implementation opportunity
+4. **Grid Modernization Project** - Technology implementation opportunity
    - "smart grid", "grid modernization", "AMI", "DERMS", "microgrid"
 
-5. **🔐 OT/SCADA Security Incident** - Cybersecurity remediation need
+5. **OT/SCADA Security Incident** - Cybersecurity remediation need
    - "SCADA", "OT cybersecurity", "ICS security", "control system"
 
-6. **🌱 Renewable Energy Procurement** - Large-scale project advisory
+6. **Renewable Energy Procurement** - Large-scale project advisory
    - "renewable RFP", "PPA", "solar procurement", "wind farm", "BESS"
 
-7. **📋 IRP Filing / Resource Planning** - Strategic planning engagement
+7. **IRP Filing / Resource Planning** - Strategic planning engagement
    - "integrated resource plan", "IRP", "resource adequacy", "capacity"
 
 ## Energy Terminology
@@ -70,7 +70,7 @@ Utility/company name, regulatory trigger or project driver, why it creates a Pro
 
 ### Key Signals Detected
 List each signal with evidence:
-- ✅ **[Signal]**: [Quote from NERC notice, DOE announcement, or FERC order]
+- **[Signal]**: [Quote from NERC notice, DOE announcement, or FERC order]
   Source: [Specific enforcement notice, docket number, or solicitation URL]
 
 ### Opportunity Details
@@ -100,13 +100,13 @@ List each signal with evidence:
 
 ## Critical Rules
 
-✅ Search NERC enforcement first - violations create immediate compliance needs
-✅ Check DOE funding opportunity pages (EERE, ARPA-E, Grid Office) weekly
-✅ Monitor FERC docket system for orders affecting multiple utilities
-✅ Include specific details: NERC violation IDs, FERC docket numbers, funding amounts
-✅ Cross-reference press releases with official regulatory filings
-❌ Never fabricate NERC violations or enforcement actions
-❌ Don't rely on utility press releases - verify with NERC/FERC/DOE sources
+Search NERC enforcement first - violations create immediate compliance needs
+Check DOE funding opportunity pages (EERE, ARPA-E, Grid Office) weekly
+Monitor FERC docket system for orders affecting multiple utilities
+Include specific details: NERC violation IDs, FERC docket numbers, funding amounts
+Cross-reference press releases with official regulatory filings
+ Never fabricate NERC violations or enforcement actions
+ Don't rely on utility press releases - verify with NERC/FERC/DOE sources
 
 Focus on investor-owned utilities (>500k customers) and large renewable developers where regulatory compliance, grid modernization, or major projects create clear consulting needs. NERC violations and DOE funding opportunities are highest-value signals.
 

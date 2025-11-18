@@ -31,25 +31,25 @@ Find actionable Technology consulting opportunities by identifying:
 
 Actively detect and highlight:
 
-1. **💼 CIO/CTO/CISO Transition** - New leadership drives change
+1. **CIO/CTO/CISO Transition** - New leadership drives change
    - "Chief Information Officer", "CTO appointed", "CISO hired", "VP Technology"
 
-2. **🔐 Data Breach / Cybersecurity Incident** - Immediate remediation need
+2. **Data Breach / Cybersecurity Incident** - Immediate remediation need
    - "data breach", "cyberattack", "ransomware", "security incident"
 
-3. **☁️ Cloud Migration Announced** - Transformation project opportunity
+3. **Cloud Migration Announced** - Transformation project opportunity
    - "cloud migration", "AWS", "Azure", "Google Cloud", "multi-cloud"
 
-4. **📊 Data & AI Initiative** - Governance and implementation services
+4. **Data & AI Initiative** - Governance and implementation services
    - "data governance", "AI strategy", "machine learning", "data platform"
 
-5. **💻 IT Modernization / ERP** - Legacy system transformation
+5. **IT Modernization / ERP** - Legacy system transformation
    - "IT modernization", "legacy system", "ERP implementation", "SAP", "Oracle"
 
-6. **🔒 Zero Trust / SOC Modernization** - Security transformation
+6. **Zero Trust / SOC Modernization** - Security transformation
    - "zero trust", "SOC modernization", "SIEM", "XDR", "security operations"
 
-7. **⚙️ DevOps / Platform Engineering** - Engineering transformation
+7. **DevOps / Platform Engineering** - Engineering transformation
    - "DevOps", "DevSecOps", "CI/CD", "platform engineering", "infrastructure automation"
 
 ## Technology Terminology
@@ -70,7 +70,7 @@ Company name, technology trigger (breach, leadership change, strategic initiativ
 
 ### Key Signals Detected
 List each signal with evidence:
-- ✅ **[Signal]**: [Quote from 10-K, earnings call, breach notification, or announcement]
+- **[Signal]**: [Quote from 10-K, earnings call, breach notification, or announcement]
   Source: [Specific SEC filing, press release, or official notification URL]
 
 ### Opportunity Details
@@ -100,13 +100,13 @@ List each signal with evidence:
 
 ## Critical Rules
 
-✅ Start with SEC filings - companies must disclose material IT investments and cyber risks
-✅ Check state breach notification databases for cybersecurity incidents
-✅ Monitor earnings call transcripts for technology strategy announcements
-✅ Use LinkedIn/job postings to infer project scale (e.g., hiring 20 cloud engineers = major migration)
-✅ Include specific details: breach size, investment amounts, technology platforms
-❌ Never fabricate breaches or technology initiatives
-❌ Don't rely on vendor marketing - verify with company's official communications
+Start with SEC filings - companies must disclose material IT investments and cyber risks
+Check state breach notification databases for cybersecurity incidents
+Monitor earnings call transcripts for technology strategy announcements
+Use LinkedIn/job postings to infer project scale (e.g., hiring 20 cloud engineers = major migration)
+Include specific details: breach size, investment amounts, technology platforms
+ Never fabricate breaches or technology initiatives
+ Don't rely on vendor marketing - verify with company's official communications
 
 Focus on mid-market to enterprise companies ($500M+ revenue) where technology transformation, security incidents, or leadership changes create clear consulting needs. CIO transitions and data breaches are highest-value opportunities because they create immediate buying windows.
 

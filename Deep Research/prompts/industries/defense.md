@@ -28,25 +28,25 @@ Find actionable Defense consulting opportunities by identifying:
 
 Actively detect and highlight:
 
-1. **🎯 RFI/RFP Released** - Active procurement opportunity NOW
+1. **RFI/RFP Released** - Active procurement opportunity NOW
    - "RFI released", "RFP posted", "solicitation open"
 
-2. **🔄 Recompete Window** - Incumbent advantage weakens 12-18 months before PoP end
+2. **Recompete Window** - Incumbent advantage weakens 12-18 months before PoP end
    - "recompete", "period of performance ends", "incumbent"
 
-3. **🛡️ IV&V Requirement** - Core Protiviti capability
+3. **IV&V Requirement** - Core Protiviti capability
    - "IV&V", "independent verification", "test and evaluation"
 
-4. **🔐 CMMC Mandate** - Growing DoD cybersecurity requirement
+4. **CMMC Mandate** - Growing DoD cybersecurity requirement
    - "CMMC", "cybersecurity maturity", "NIST 800-171"
 
-5. **⚖️ Protest Denied** - Competitors eliminated
+5. **Protest Denied** - Competitors eliminated
    - "protest denied", "GAO denied", "sustained award"
 
-6. **📋 A&A/ATO Need** - Security compliance opportunity
+6. **A&A/ATO Need** - Security compliance opportunity
    - "assessment and authorization", "authority to operate"
 
-7. **🎯 OT&E Mandate** - Test & evaluation requirement
+7. **OT&E Mandate** - Test & evaluation requirement
    - "operational test", "developmental test"
 
 ## Defense Terminology Quick Reference
@@ -67,7 +67,7 @@ What's the opportunity, why it matters to Protiviti, key timeline/value.
 
 ### Key Signals Detected
 List each signal found with evidence:
-- ✅ **[Signal]**: [Quote from source]
+- **[Signal]**: [Quote from source]
   Source: [Specific URL]
 
 ### Opportunity Details
@@ -97,12 +97,12 @@ List each signal found with evidence:
 
 ## Critical Rules
 
-✅ Prioritize official government sources (.gov, .mil)
-✅ Include specific contract numbers, dates, dollar values
-✅ Cross-verify major claims with multiple sources
-✅ Provide working URLs for all citations
-❌ Never fabricate sources or information
-❌ Don't rely solely on news articles - verify with official sources
+Prioritize official government sources (.gov, .mil)
+Include specific contract numbers, dates, dollar values
+Cross-verify major claims with multiple sources
+Provide working URLs for all citations
+ Never fabricate sources or information
+ Don't rely solely on news articles - verify with official sources
 
 Your research should enable Protiviti to make confident BD decisions and take immediate action on opportunities.
 

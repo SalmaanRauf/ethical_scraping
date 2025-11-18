@@ -31,25 +31,25 @@ Find actionable Healthcare/Life Sciences consulting opportunities by identifying
 
 Actively detect and highlight:
 
-1. **⚠️ FDA Warning Letter** - Mandates compliance remediation
+1. **FDA Warning Letter** - Mandates compliance remediation
    - "FDA warning letter", "Form 483", "untitled letter", "regulatory action"
 
-2. **🔬 Phase III Trial Initiated** - Large-scale operations create consulting needs
+2. ** Phase III Trial Initiated** - Large-scale operations create consulting needs
    - "Phase III", "pivotal trial", "registrational study", "enrollment"
 
-3. **🏥 CMS Procurement / RFP** - Direct government contract opportunity
+3. **CMS Procurement / RFP** - Direct government contract opportunity
    - "CMS RFP", "Medicare procurement", "quality program", "CMMI"
 
-4. **🔐 HIPAA Breach** - Requires privacy/security remediation
+4. **HIPAA Breach** - Requires privacy/security remediation
    - "HIPAA breach", "OCR settlement", "protected health information"
 
-5. **✅ FDA Approval** - Post-market surveillance and compliance needs
+5. **FDA Approval** - Post-market surveillance and compliance needs
    - "FDA approval", "510(k) clearance", "PMA approval", "breakthrough designation"
 
-6. **📋 GxP Compliance Issues** - Quality system remediation
+6. **GxP Compliance Issues** - Quality system remediation
    - "GCP", "GLP", "GMP", "CAPA", "deviation", "quality system"
 
-7. **💊 Clinical Hold / Partial Hold** - Trial suspension requiring resolution
+7. ** Clinical Hold / Partial Hold** - Trial suspension requiring resolution
    - "clinical hold", "partial clinical hold", "IND hold"
 
 ## Healthcare Terminology
@@ -70,7 +70,7 @@ Organization name, regulatory trigger or business need, why it creates a Protivi
 
 ### Key Signals Detected
 List each signal with evidence:
-- ✅ **[Signal]**: [Quote from FDA letter, trial registration, or regulatory filing]
+- **[Signal]**: [Quote from FDA letter, trial registration, or regulatory filing]
   Source: [Specific FDA document, ClinicalTrials.gov ID, or OCR case URL]
 
 ### Opportunity Details
@@ -100,13 +100,13 @@ List each signal with evidence:
 
 ## Critical Rules
 
-✅ Search FDA enforcement database first - warning letters create immediate needs
-✅ Check ClinicalTrials.gov for Phase III/pivotal trials indicating large sponsor activity
-✅ Verify HIPAA breaches via official OCR breach portal
-✅ Include specific details: trial NCT numbers, FDA warning letter dates, breach size
-✅ Cross-reference company announcements with official regulatory sources
-❌ Never fabricate FDA actions or clinical trial information
-❌ Don't rely on press releases - verify with FDA.gov or ClinicalTrials.gov
+Search FDA enforcement database first - warning letters create immediate needs
+Check ClinicalTrials.gov for Phase III/pivotal trials indicating large sponsor activity
+Verify HIPAA breaches via official OCR breach portal
+Include specific details: trial NCT numbers, FDA warning letter dates, breach size
+Cross-reference company announcements with official regulatory sources
+ Never fabricate FDA actions or clinical trial information
+ Don't rely on press releases - verify with FDA.gov or ClinicalTrials.gov
 
 Focus on organizations with significant regulatory footprint (multi-site operations, commercial products, large trials) where compliance or operational challenges create clear consulting needs. FDA warning letters and major HIPAA breaches are highest-value opportunities.
 
