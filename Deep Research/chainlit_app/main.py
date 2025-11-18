@@ -33,7 +33,9 @@ from services.company_profiles import load_company_profiles
 setup_logging(level=logging.INFO)
 logger = logging.getLogger(__name__)
 DEEP_RESEARCH_SESSION_KEY = "deep_research_mode"
+INDUSTRY_PROMPT_SESSION_KEY = "industry_prompt"
 DEFAULT_MODE = "standard"
+DEFAULT_INDUSTRY = "general"
 # --- Input validation helpers ---
 
 def validate_payload(payload: Dict[str, Any], required_keys: list[str]) -> tuple[bool, Optional[str]]:
@@ -618,6 +620,30 @@ async def start():
                     ),
                 ],
             ).send()
+            # Load and display industry prompt options
+            from services.prompt_loader import PromptLoader
+            loader = PromptLoader()
+            industries = loader.get_available_industries()
+            
+            actions = []
+            for key, meta in industries.items():
+                actions.append(
+                    cl.Action(
+                        name="set_industry",
+                        value=key,
+                        label=f"{meta['display_name']} v{meta['version']}",
+                    )
+                )
+            
+            await cl.AskActionMessage(
+                content=(
+                    "**Step 2:** Select industry focus for Deep Research:\\n\\n"
+                    "This customizes the agent's expertise, data sources, and search strategy. "
+                    "Choose 'General' if researching across multiple industries."
+                ),
+                actions=actions
+            ).send()
+
         else:
             await cl.Message(
                 "ð§ Deep Research mode is unavailable in this environment. Running with the standard analysis pipeline."
@@ -655,6 +681,31 @@ async def update_mode(action: cl.Action):
     await cl.Message(f"â Mode updated: **{label}**").send()
 
 
+
+@cl.action_callback("set_industry")
+async def update_industry(action: cl.Action):
+    """Handle industry prompt selection."""
+    selected_industry = action.value or DEFAULT_INDUSTRY
+    cl.user_session.set(INDUSTRY_PROMPT_SESSION_KEY, selected_industry)
+    
+    # Get metadata for confirmation
+    from services.prompt_loader import PromptLoader
+    loader = PromptLoader()
+    try:
+        meta = loader.get_prompt_metadata(selected_industry)
+        await cl.Message(
+            f"✅ Industry focus selected: **{meta['display_name']}** (v{meta['version']})\\n\\n"
+            f"📋 Optimized for: {meta['description']}\\n\\n"
+            f"You can now ask your research question in the chat."
+        ).send()
+    except Exception as e:
+        logger.error(f"Failed to load industry metadata: {e}")
+        await cl.Message(
+            f"✅ Industry focus selected: **{selected_industry}**\\n\\n"
+            f"You can now ask your research question in the chat."
+        ).send()
+
+
 @cl.on_message
 async def on_message(message: cl.Message):
     """Handle incoming messages with comprehensive error handling."""
@@ -688,9 +739,12 @@ async def on_message(message: cl.Message):
         deep_mode = current_mode == "deep" and AppConfig.ENABLE_DEEP_RESEARCH
 
         if deep_mode:
-            await cl.Message("ð Performing Deep Researchâ¦ this may take a moment.").send()
+            # Get selected industry prompt
+            selected_industry = cl.user_session.get(INDUSTRY_PROMPT_SESSION_KEY, DEFAULT_INDUSTRY)
+            
+            await cl.Message(f"Performing Deep Research (Industry: {selected_industry})... this may take a moment.").send()
             try:
-                response = await ors.run_deep_research(user_text)
+                response = await ors.run_deep_research(user_text, industry=selected_industry)
                 await present_enhanced_response(response)
                 return
             except Exception as exc:
