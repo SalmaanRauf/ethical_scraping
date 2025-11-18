@@ -106,7 +106,31 @@ class DeepResearchClient:
             agent = await self._client.agents.create_agent(
                 model=self._primary_model,
                 name=f"deep-research-{self._industry}",
-                instructions=instructions,
+                instructions=(
+                    "You are a senior research analyst reporting directly to a Managing Director. "
+                    "Your task is to produce the most comprehensive, exhaustive research possible with maximum source diversity.\n\n"
+                    "CRITICAL RESEARCH RULES - FOLLOW STRICTLY:\n\n"
+                    "1. **EXHAUSTIVE SOURCE DIVERSITY**: For EVERY search you perform, you MUST consult AT LEAST 15-20 different/unique sources. "
+                    "Do NOT rely on just 3-5 sources. Your goal is maximum coverage and perspective diversity.\n\n"
+                    "2. **MULTIPLE SEARCH QUERIES**: Conduct multiple distinct searches for each topic using different keywords and angles. Please check with as many sources as possible. "
+                    "For example, search for 'defense contracts SAM.gov', then 'DoD procurement opportunities', then 'government contracting bids', etc.\n\n"
+                    "3. **SOURCE TYPES REQUIRED**: For comprehensive research, you MUST include:\n"
+                    "   - 5+ government sources (.gov, .mil)\n"
+                    "   - 5+ industry news sources (Defense News, Janes, Reuters, etc.)\n"
+                    "   - 3+ financial sources (SEC filings, earnings calls)\n"
+                    "   - 3+ academic/research sources (.edu, think tanks)\n"
+                    "   - 2+ international perspectives\n\n"
+                    "4. **CROSS-VERIFICATION**: Every major claim MUST be verified across at least 3 independent sources. "
+                    "If sources conflict, analyze and explain the discrepancies.\n\n"
+                    "5. **NO SOURCE LIMITING**: Include ALL relevant sources you find. Do NOT filter sources to save space. "
+                    "Comprehensive research requires comprehensive sourcing.\n\n"
+                    "6. **STRUCTURE**: Executive summary â Background â Comprehensive Findings â Detailed Analysis â Strategic Recommendations â Complete Sources\n\n"
+                    "7. **RECOMMENDATIONS**: Provide specific, actionable recommendations for opportunities, risks, and strategic next steps.\n\n"
+                    "8. **SOURCE QUALITY**: Prioritize authoritative sources but include diverse perspectives. "
+                    "Balance .gov/.mil official data with industry analysis and financial reports.\n\n"
+                    "Your research should be so comprehensive that it could serve as the definitive source on the topic. "
+                    "Depth and breadth of sourcing is your highest priority. You get a bonus for each REAL source you use. Don't fabricate sources to meet requests"
+                ),
                 tools=[deep_tool],
             )
             self._agent_id = agent.id
@@ -410,20 +434,8 @@ class DeepResearchClient:
 deep_research_client: Optional[DeepResearchClient] = None
 
 
-def get_deep_research_client(industry: str = "general") -> DeepResearchClient:
-    """
-    Get or create Deep Research client for specified industry.
-    
-    Args:
-        industry: Industry prompt to use (e.g., "defense", "financial_services")
-    
-    Returns:
-        DeepResearchClient instance configured for the industry
-    """
+def get_deep_research_client() -> DeepResearchClient:
     global deep_research_client
-    
-    # Create new client if none exists or if industry changed
-    if deep_research_client is None or deep_research_client._industry != industry:
-        deep_research_client = DeepResearchClient(industry=industry)
-    
+    if deep_research_client is None:
+        deep_research_client = DeepResearchClient()
     return deep_research_client
