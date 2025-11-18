@@ -757,8 +757,7 @@ async def on_message(message: cl.Message):
             
             logger.info(
                 f"Deep Research starting: session={cl.user_session.get('session_id')}, "
-                f"industry_retrieved={selected_industry}, "
-                f"session_keys={list(cl.user_session.items())}"
+                f"industry_retrieved={selected_industry}"
             )
             
             await cl.Message(f"Performing Deep Research (Industry: {selected_industry})... this may take a moment.").send()
