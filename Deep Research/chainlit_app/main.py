@@ -686,37 +686,49 @@ async def update_mode(action: cl.Action):
 @cl.action_callback("set_industry")
 async def update_industry(action: cl.Action):
     """Handle industry prompt selection."""
-    selected_industry = action.value or DEFAULT_INDUSTRY
-    session_id = cl.user_session.get("session_id")
-    
-    logger.info(
-        f"Industry action received: value={action.value}, resolved={selected_industry}, session={session_id}"
-    )
-    
-    cl.user_session.set(INDUSTRY_PROMPT_SESSION_KEY, selected_industry)
-    
-    # Verify it was stored
-    stored_value = cl.user_session.get(INDUSTRY_PROMPT_SESSION_KEY)
-    logger.info(
-        f"Industry stored in session: session={session_id}, stored={stored_value}"
-    )
-    
-    # Get metadata for confirmation
-    from services.prompt_loader import PromptLoader
-    loader = PromptLoader()
     try:
-        meta = loader.get_prompt_metadata(selected_industry)
-        await cl.Message(
-            f"Industry focus selected: **{meta['display_name']}** (v{meta['version']})\n\n"
-            f"Optimized for: {meta['description']}\n\n"
-            f"You can now ask your research question in the chat."
-        ).send()
+        logger.info(f"=== update_industry callback STARTED ===")
+        logger.info(f"Action object: {action}")
+        logger.info(f"Action.value: {action.value}")
+        logger.info(f"Action.payload: {getattr(action, 'payload', 'NO PAYLOAD')}")
+        
+        selected_industry = action.value or DEFAULT_INDUSTRY
+        session_id = cl.user_session.get("session_id")
+        
+        logger.info(
+            f"Industry action received: value={action.value}, resolved={selected_industry}, session={session_id}"
+        )
+        
+        cl.user_session.set(INDUSTRY_PROMPT_SESSION_KEY, selected_industry)
+        
+        # Verify it was stored
+        stored_value = cl.user_session.get(INDUSTRY_PROMPT_SESSION_KEY)
+        logger.info(
+            f"Industry stored in session: session={session_id}, stored={stored_value}"
+        )
+        
+        # Get metadata for confirmation
+        from services.prompt_loader import PromptLoader
+        loader = PromptLoader()
+        try:
+            meta = loader.get_prompt_metadata(selected_industry)
+            await cl.Message(
+                f"Industry focus selected: **{meta['display_name']}** (v{meta['version']})\n\n"
+                f"Optimized for: {meta['description']}\n\n"
+                f"You can now ask your research question in the chat."
+            ).send()
+        except Exception as e:
+            logger.error(f"Failed to load industry metadata: {e}")
+            await cl.Message(
+                f"Industry focus selected: **{selected_industry}**\n\n"
+                f"You can now ask your research question in the chat."
+            ).send()
+        
+        logger.info(f"=== update_industry callback COMPLETED ===")
+    
     except Exception as e:
-        logger.error(f"Failed to load industry metadata: {e}")
-        await cl.Message(
-            f"Industry focus selected: **{selected_industry}**\n\n"
-            f"You can now ask your research question in the chat."
-        ).send()
+        logger.exception(f"CRITICAL ERROR in update_industry callback: {e}")
+        await cl.Message(f"Error selecting industry. Using default (general).").send()
 
 
 @cl.on_message
