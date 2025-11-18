@@ -687,7 +687,19 @@ async def update_mode(action: cl.Action):
 async def update_industry(action: cl.Action):
     """Handle industry prompt selection."""
     selected_industry = action.value or DEFAULT_INDUSTRY
+    session_id = cl.user_session.get("session_id")
+    
+    logger.info(
+        f"Industry action received: value={action.value}, resolved={selected_industry}, session={session_id}"
+    )
+    
     cl.user_session.set(INDUSTRY_PROMPT_SESSION_KEY, selected_industry)
+    
+    # Verify it was stored
+    stored_value = cl.user_session.get(INDUSTRY_PROMPT_SESSION_KEY)
+    logger.info(
+        f"Industry stored in session: session={session_id}, stored={stored_value}"
+    )
     
     # Get metadata for confirmation
     from services.prompt_loader import PromptLoader
@@ -742,6 +754,12 @@ async def on_message(message: cl.Message):
         if deep_mode:
             # Get selected industry prompt
             selected_industry = cl.user_session.get(INDUSTRY_PROMPT_SESSION_KEY, DEFAULT_INDUSTRY)
+            
+            logger.info(
+                f"Deep Research starting: session={cl.user_session.get('session_id')}, "
+                f"industry_retrieved={selected_industry}, "
+                f"session_keys={list(cl.user_session.items())}"
+            )
             
             await cl.Message(f"Performing Deep Research (Industry: {selected_industry})... this may take a moment.").send()
             try:

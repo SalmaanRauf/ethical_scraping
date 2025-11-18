@@ -422,8 +422,16 @@ def get_deep_research_client(industry: str = "general") -> DeepResearchClient:
     """
     global deep_research_client
     
+    logger.info(
+        f"get_deep_research_client called: requested_industry={industry}, "
+        f"existing_client={'None' if deep_research_client is None else deep_research_client._industry}"
+    )
+    
     # Create new client if none exists or if industry changed
     if deep_research_client is None or deep_research_client._industry != industry:
+        logger.info(f"Creating NEW Deep Research client for industry={industry}")
         deep_research_client = DeepResearchClient(industry=industry)
+    else:
+        logger.info(f"Reusing existing Deep Research client for industry={industry}")
     
     return deep_research_client

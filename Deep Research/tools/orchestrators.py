@@ -369,10 +369,13 @@ async def run_deep_research(query: str, industry: str = "general") -> Dict[str, 
     Returns:
         Dict with formatted Deep Research results
     """
+    logger.info(f"run_deep_research called with industry={industry}, query={query[:100]}")
+    
     if not AppConfig.ENABLE_DEEP_RESEARCH:
         raise RuntimeError("Deep Research feature flag is disabled")
 
     client = get_deep_research_client(industry=industry)
+    logger.info(f"Got Deep Research client with industry={client._industry}")
     report = await client.run(query)
 
     def _to_citations(raw_items) -> List[Citation]:
