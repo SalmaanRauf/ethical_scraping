@@ -577,7 +577,7 @@ async def start():
         
         # Send welcome message
         welcome_msg = (
-            "👋 **Company Intelligence (Chat)**\n\n"
+            " **Company Intelligence (Chat)**\n\n"
             "• Type a company (e.g., Capital One or ticker COF) for a full analysis.\n"
             "• Then ask follow-ups (risk, competitors, regulatory, strategy, timeline, etc.).\n"
             "• I'll remember the context and only search when needed.\n\n"

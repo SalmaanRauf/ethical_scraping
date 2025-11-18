@@ -43,7 +43,7 @@ Actively detect and highlight:
 4. ** Stress Test Issues** - CCAR/DFAST findings require response
    - "CCAR", "DFAST", "stress test", "capital plan", "Fed findings"
 
-5. **⏰ Regulatory Deadline** - Time-bound compliance creates urgency
+5. ** Regulatory Deadline** - Time-bound compliance creates urgency
    - "compliance deadline", "effective date", "implementation date"
 
 6. ** AML/BSA Findings** - Financial crimes compliance need

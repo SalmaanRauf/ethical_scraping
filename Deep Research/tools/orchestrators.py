@@ -233,7 +233,7 @@ async def follow_up_research(
         if progress:
             try:
                 scope_name = scope.replace('_', ' ').title()
-                await progress(f"Ã°ÂÂÂ Searching {scope_name}...")
+                await progress(f" Searching {scope_name}...")
             except Exception as e:
                 logger.warning(f"Scope progress callback failed: {e}")
         logger.debug(f"Fetching GWBS scope: {scope}")
@@ -255,7 +255,7 @@ async def follow_up_research(
             if progress:
                 try:
                     scope_name = sec.scope.replace('_', ' ').title()
-                    await progress(f"Ã¢ÂÂ {scope_name} completed")
+                    await progress(f"  {scope_name} completed")
                 except Exception as e:
                     logger.warning(f"Completion progress callback failed: {e}")
         except Exception as fetch_err:
@@ -264,7 +264,7 @@ async def follow_up_research(
             if progress:
                 try:
                     scope_name = scope_task_map.get(fut, "Unknown").replace('_', ' ').title()
-                    await progress(f"Ã¢Â Ã¯Â¸Â {scope_name} failed - continuing with available data")
+                    await progress(f"  {scope_name} failed - continuing with available data")
                 except Exception as e:
                     logger.warning(f"Error progress callback failed: {e}")
 
@@ -478,7 +478,7 @@ async def enhanced_user_request_handler(
         
         # Resolve intent
         if progress:
-            await progress("Ã°ÂÂÂ Analyzing your request...")
+            await progress(" Analyzing your request...")
         
         intent_type, intent_plan = await enhanced_router.route_enhanced(user_input, context)
 
@@ -498,7 +498,7 @@ async def enhanced_user_request_handler(
 
         # Execute tasks
         if progress:
-            await progress(f"Ã°ÂÂÂ Executing {len(intent_plan.tasks)} task(s)...")
+            await progress(f" Executing {len(intent_plan.tasks)} task(s)...")
         
         execution_result = await task_executor.execute_plan(
             intent_plan, context, bing_agent, analyst_agent
@@ -506,7 +506,7 @@ async def enhanced_user_request_handler(
         
         # Format response
         if progress:
-            await progress("Ã°ÂÂÂ Formatting response...")
+            await progress(" Formatting response...")
         
         formatted_response = response_formatter.format_response(execution_result)
         
@@ -572,7 +572,7 @@ async def handle_general_research_request(
         general_orchestrator = initialize_general_research_orchestrator(bing_agent)
         
         if progress:
-            await progress("Ã°ÂÂÂ Researching your topic...")
+            await progress(" Researching your topic...")
         
         # Execute general research
         summary, citations = await general_orchestrator.execute_general_research(user_input)
@@ -621,7 +621,7 @@ async def handle_any_company_request(
         company_ref = CompanyRef(name=company_name)
         
         if progress:
-            await progress(f"Ã°ÂÂÂ Analyzing {company_name}...")
+            await progress(f" Analyzing {company_name}...")
         
         # Execute full company analysis
         briefing = await full_company_analysis(

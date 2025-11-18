@@ -19,7 +19,7 @@ def main():
     ]
     missing = [k for k in required if not os.getenv(k)]
     if missing:
-        print("❌ Missing env variables:")
+        print("ERROR: Missing env variables:")
         for k in missing:
             print(f"  - {k}")
         print("Create a .env from env.example and fill these in.")
@@ -27,8 +27,8 @@ def main():
 
     env = os.environ.copy()
     env["PYTHONPATH"] = f"{root}:{env.get('PYTHONPATH','')}"
-    print("🚀 Launching Chainlit… http://localhost:8000")
-    subprocess.run([sys.executable, "-m", "chainlit", "run", "chainlit_app/main.py", "--host", "0.0.0.0", "--port", "8000"], cwd=root, env=env, check=False)
+    print("Launching Chainlit at http://localhost:8000")
+    subprocess.run([sys.executable, "-m", "chainlit", "run", "chainlit_app/main.py", "--host", "localhost", "--port", "8000"], cwd=root, env=env, check=False)
 
 if __name__ == "__main__":
     main()

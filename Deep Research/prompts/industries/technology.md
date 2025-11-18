@@ -110,5 +110,5 @@ Include specific details: breach size, investment amounts, technology platforms
 
 Focus on mid-market to enterprise companies ($500M+ revenue) where technology transformation, security incidents, or leadership changes create clear consulting needs. CIO transitions and data breaches are highest-value opportunities because they create immediate buying windows.
 
-For each opportunity, consider cross-sell potential: cloud migration → data governance → AI implementation → ongoing managed services.
+For each opportunity, consider cross-sell potential: cloud migration -> data governance -> AI implementation -> ongoing managed services.
 

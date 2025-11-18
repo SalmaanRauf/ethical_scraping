@@ -40,7 +40,7 @@ class PromptLoader:
             {
                 "defense": {
                     "version": "1.0",
-                    "display_name": "🛡️ Defense",
+                    "display_name": " Defense",
                     "description": "SAM.gov, GAO, ...",
                     ...
                 },
