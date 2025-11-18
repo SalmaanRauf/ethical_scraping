@@ -358,12 +358,21 @@ async def general_research(prompt: str, *, bing_agent, progress: Optional[Callab
     return (raw or {}).get("summary", ""), cites
 
 
-async def run_deep_research(query: str) -> Dict[str, Any]:
-    """Execute Deep Research run via Azure AI Foundry."""
+async def run_deep_research(query: str, industry: str = "general") -> Dict[str, Any]:
+    """
+    Execute Deep Research run via Azure AI Foundry.
+    
+    Args:
+        query: User's research question
+        industry: Industry prompt to use (e.g., "defense", "financial_services", "general")
+    
+    Returns:
+        Dict with formatted Deep Research results
+    """
     if not AppConfig.ENABLE_DEEP_RESEARCH:
         raise RuntimeError("Deep Research feature flag is disabled")
 
-    client = get_deep_research_client()
+    client = get_deep_research_client(industry=industry)
     report = await client.run(query)
 
     def _to_citations(raw_items) -> List[Citation]:
