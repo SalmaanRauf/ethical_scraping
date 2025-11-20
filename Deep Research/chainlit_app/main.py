@@ -37,10 +37,6 @@ INDUSTRY_PROMPT_SESSION_KEY = "industry_prompt"
 DEFAULT_MODE = "standard"
 DEFAULT_INDUSTRY = "general"
 
-# Debug: Confirm callbacks are being defined at module load time
-print("=" * 80)
-print("MAIN.PY MODULE LOADING - CALLBACKS WILL BE REGISTERED BELOW")
-print("=" * 80)
 # --- Input validation helpers ---
 
 def validate_payload(payload: Dict[str, Any], required_keys: list[str]) -> tuple[bool, Optional[str]]:
@@ -613,22 +609,24 @@ async def start():
             loader = PromptLoader()
             cl.user_session.set("prompt_loader", loader)
             
-            await cl.AskActionMessage(
-                content="Select research mode (you can change this later):",
-                actions=[
-                    cl.Action(
-                        name="set_mode",
-                        value="standard",
-                        label="Standard Analysis",
-                        payload={"mode": "standard"},
-                    ),
-                    cl.Action(
-                        name="set_mode",
-                        value="deep",
-                        label="Deep Research (slower)",
-                        payload={"mode": "deep"},
-                    ),
-                ],
+            # Chainlit 2.x: Attach actions to Message, not AskActionMessage
+            actions = [
+                cl.Action(
+                    name="set_mode",
+                    value="standard",
+                    label="Standard Analysis",
+                    payload={"mode": "standard"},
+                ),
+                cl.Action(
+                    name="set_mode",
+                    value="deep",
+                    label="Deep Research (slower)",
+                    payload={"mode": "deep"},
+                ),
+            ]
+            await cl.Message(
+                content="**Step 1:** Select research mode:",
+                actions=actions
             ).send()
 
         else:
@@ -640,13 +638,9 @@ async def start():
         await handle_error(e, "chat_start", "Failed to initialize chat session. Please refresh and try again.")
 
 
-print("Registering @cl.action_callback('set_mode')")
-
 @cl.action_callback("set_mode")
 async def update_mode(action: cl.Action):
     """Handle mode selection actions."""
-    print(f"!!! update_mode CALLBACK TRIGGERED !!! action={action}")
-    logger.error(f"!!! update_mode CALLBACK TRIGGERED !!! action={action}")
     payload_mode = (action.payload or {}).get("mode") if hasattr(action, "payload") else None
     selected = payload_mode or action.value or DEFAULT_MODE
     session_id = cl.user_session.get("session_id")
@@ -688,7 +682,8 @@ async def update_mode(action: cl.Action):
                 )
             )
         
-        await cl.AskActionMessage(
+        # Chainlit 2.x: Attach actions to Message
+        await cl.Message(
             content=(
                 "**Step 2:** Select industry focus for Deep Research:\n\n"
                 "This customizes the agent's expertise, data sources, and search strategy. "
@@ -700,33 +695,18 @@ async def update_mode(action: cl.Action):
 
 
 
-print("Registering @cl.action_callback('set_industry')")
-
 @cl.action_callback("set_industry")
 async def update_industry(action: cl.Action):
     """Handle industry prompt selection."""
     try:
-        print(f"!!! update_industry CALLBACK TRIGGERED !!! action={action}")
-        logger.error(f"!!! update_industry CALLBACK TRIGGERED !!! action={action}")
-        logger.info(f"=== update_industry callback STARTED ===")
-        logger.info(f"Action object: {action}")
-        logger.info(f"Action.value: {action.value}")
-        logger.info(f"Action.payload: {getattr(action, 'payload', 'NO PAYLOAD')}")
-        
         selected_industry = action.value or DEFAULT_INDUSTRY
         session_id = cl.user_session.get("session_id")
         
         logger.info(
-            f"Industry action received: value={action.value}, resolved={selected_industry}, session={session_id}"
+            f"Industry selected: {selected_industry} (session={session_id})"
         )
         
         cl.user_session.set(INDUSTRY_PROMPT_SESSION_KEY, selected_industry)
-        
-        # Verify it was stored
-        stored_value = cl.user_session.get(INDUSTRY_PROMPT_SESSION_KEY)
-        logger.info(
-            f"Industry stored in session: session={session_id}, stored={stored_value}"
-        )
         
         # Get metadata for confirmation
         from services.prompt_loader import PromptLoader
@@ -741,14 +721,12 @@ async def update_industry(action: cl.Action):
         except Exception as e:
             logger.error(f"Failed to load industry metadata: {e}")
             await cl.Message(
-                f"Industry focus selected: **{selected_industry}**\n\n"
-                f"You can now ask your research question in the chat."
-            ).send()
-        
-        logger.info(f"=== update_industry callback COMPLETED ===")
+            f"Industry focus selected: **{selected_industry}**\n\n"
+            f"You can now ask your research question in the chat."
+        ).send()
     
     except Exception as e:
-        logger.exception(f"CRITICAL ERROR in update_industry callback: {e}")
+        logger.exception(f"Error in update_industry callback: {e}")
         await cl.Message(f"Error selecting industry. Using default (general).").send()
 
 
