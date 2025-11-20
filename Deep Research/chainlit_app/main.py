@@ -610,16 +610,15 @@ async def start():
             cl.user_session.set("prompt_loader", loader)
             
             # Chainlit 2.x: Attach actions to Message, not AskActionMessage
+            # Action only has: name, label, payload (no 'value' parameter)
             actions = [
                 cl.Action(
                     name="set_mode",
-                    value="standard",
                     label="Standard Analysis",
                     payload={"mode": "standard"},
                 ),
                 cl.Action(
                     name="set_mode",
-                    value="deep",
                     label="Deep Research (slower)",
                     payload={"mode": "deep"},
                 ),
@@ -641,13 +640,13 @@ async def start():
 @cl.action_callback("set_mode")
 async def update_mode(action: cl.Action):
     """Handle mode selection actions."""
-    payload_mode = (action.payload or {}).get("mode") if hasattr(action, "payload") else None
-    selected = payload_mode or action.value or DEFAULT_MODE
+    # In Chainlit 2.6, Action only has .name and .payload (no .value)
+    selected = (action.payload or {}).get("mode", DEFAULT_MODE)
     session_id = cl.user_session.get("session_id")
     logger.info(
-        "Mode action received payload=%s value=%s resolved=%s session=%s",
+        "Mode action received: name=%s payload=%s resolved=%s session=%s",
+        action.name,
         action.payload,
-        action.value,
         selected,
         session_id,
     )
@@ -676,7 +675,6 @@ async def update_mode(action: cl.Action):
             actions.append(
                 cl.Action(
                     name="set_industry",
-                    value=key,
                     label=f"{meta['display_name']} v{meta['version']}",
                     payload={"industry": key}
                 )
@@ -699,7 +697,8 @@ async def update_mode(action: cl.Action):
 async def update_industry(action: cl.Action):
     """Handle industry prompt selection."""
     try:
-        selected_industry = action.value or DEFAULT_INDUSTRY
+        # In Chainlit 2.6, Action only has .name and .payload (no .value)
+        selected_industry = (action.payload or {}).get("industry", DEFAULT_INDUSTRY)
         session_id = cl.user_session.get("session_id")
         
         logger.info(
