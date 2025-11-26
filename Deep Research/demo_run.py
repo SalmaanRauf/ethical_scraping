@@ -70,26 +70,40 @@ def print_step_details(step):
     Visualizes the 'Brain' of the agent in the terminal.
     Replicates the 'scrolling text' effect from the Azure demo.
     """
-    # 1. VISUALIZE SEARCHES (The "Doing")
-    if step.type == "tool_calls":
-        for tool_call in step.step_details.tool_calls:
-            if getattr(tool_call, 'type', '') == 'bing_grounding':
-                print(f"  [BING SEARCH] Query: {tool_call.bing_grounding.query}")
-            elif getattr(tool_call, 'function', None):
-                # This is the Deep Research tool itself thinking
-                print(f"  [DEEP RESEARCH] Planning next research phase...")
+    try:
+        step_type = getattr(step, 'type', None)
+        
+        # 1. VISUALIZE SEARCHES (The "Doing")
+        if step_type == "tool_calls":
+            step_details = getattr(step, 'step_details', None)
+            if step_details:
+                tool_calls = getattr(step_details, 'tool_calls', [])
+                for tool_call in tool_calls:
+                    tool_type = getattr(tool_call, 'type', '')
+                    if tool_type == 'bing_grounding':
+                        bing_grounding = getattr(tool_call, 'bing_grounding', None)
+                        if bing_grounding:
+                            query = getattr(bing_grounding, 'query', 'Unknown query')
+                            print(f"  [BING SEARCH] Query: {query}")
+                    elif getattr(tool_call, 'function', None):
+                        # This is the Deep Research tool itself thinking
+                        print(f"  [DEEP RESEARCH] Planning next research phase...")
 
-    # 2. VISUALIZE THOUGHTS (The "Thinking")
-    elif step.type == "message_creation":
-        print(f"  [AGENT] Drafting findings...")
+        # 2. VISUALIZE THOUGHTS (The "Thinking")
+        elif step_type == "message_creation":
+            print(f"  [AGENT] Drafting findings...")
+            
+    except Exception as e:
+        print(f"  [DEBUG] Error displaying step: {e}")
 
 def main():
     print(f"\n--- DEFENSE INTELLIGENCE TERMINAL [Microsoft Demo Mode] ---")
     
-    # 1. Initialize Client
-    client = AIProjectClient.from_connection_string(
-        credential=DefaultAzureCredential(),
-        conn_str=PROJECT_ENDPOINT
+    # 1. Initialize Client (using same method as deep_research_client.py)
+    credential = DefaultAzureCredential()
+    client = AIProjectClient(
+        endpoint=PROJECT_ENDPOINT,
+        credential=credential
     )
 
     # 2. Configure Deep Research Tool
@@ -104,13 +118,22 @@ def main():
 
     # 3. Create the Agent (The "Brain")
     print(f"[*] Deploying Agent with Defense.md Logic...")
-    agent = client.agents.create_agent(
-        model=MODEL_DEPLOYMENT,
-        name="defense-deep-researcher",
-        instructions=COMBINED_INSTRUCTIONS, # <--- The Hybrid Prompt
-        tools=[deep_tool]
-    )
-    print(f"[*] Agent Ready: {agent.id}")
+    try:
+        agent = client.agents.create_agent(
+            model=MODEL_DEPLOYMENT,
+            name="defense-deep-researcher",
+            instructions=COMBINED_INSTRUCTIONS, # <--- The Hybrid Prompt
+            tools=[deep_tool]
+        )
+        print(f"[*] Agent Ready: {agent.id}")
+    except Exception as e:
+        print(f"[ERROR] Failed to create agent: {e}")
+        print("Check that:")
+        print("  - PROJECT_ENDPOINT is set correctly")
+        print("  - MODEL_DEPLOYMENT_NAME is deployed in your AI Project")
+        print("  - DEEP_RESEARCH_MODEL_DEPLOYMENT_NAME is deployed")
+        print("  - BING_CONNECTION_NAME is correct")
+        return
 
     # 4. Get User Query
     user_query = input("\nEnter Defense Target (e.g., 'Analyze Anduril Industries contracts'): ")
@@ -142,15 +165,22 @@ def main():
         run = client.agents.runs.get(thread_id=thread.id, run_id=run.id)
         
         # Fetch Steps (The "Brain Activity")
-        steps = client.agents.runs.list_steps(thread_id=thread.id, run_id=run.id)
-        
-        # Sort chronologically to show flow
-        sorted_steps = sorted(steps.data, key=lambda x: x.created_at)
-        
-        for step in sorted_steps:
-            if step.id not in processed_steps:
-                print_step_details(step) # <--- The Visualizer Function
-                processed_steps.add(step.id)
+        try:
+            steps = client.agents.runs.list_steps(thread_id=thread.id, run_id=run.id)
+            
+            # Handle different response formats
+            steps_list = list(steps) if hasattr(steps, '__iter__') else (steps.data if hasattr(steps, 'data') else [])
+            
+            # Sort chronologically to show flow
+            sorted_steps = sorted(steps_list, key=lambda x: getattr(x, 'created_at', 0))
+            
+            for step in sorted_steps:
+                step_id = getattr(step, 'id', None)
+                if step_id and step_id not in processed_steps:
+                    print_step_details(step) # <--- The Visualizer Function
+                    processed_steps.add(step_id)
+        except Exception as e:
+            print(f"  [DEBUG] Error fetching steps: {e}")
 
     # 7. Output Final Report
     if run.status == "completed":
@@ -159,23 +189,34 @@ def main():
         print("\n" + "="*80)
         
         messages = client.agents.messages.list(thread_id=thread.id)
-        for msg in messages.data:
-            if msg.role == "assistant":
+        
+        # Handle messages (can be PagedList or similar)
+        messages_list = list(messages) if hasattr(messages, '__iter__') else messages.data
+        
+        for msg in messages_list:
+            if getattr(msg, 'role', '') == "assistant":
                 # Print the final report text
-                for content in msg.content:
-                    if content.type == "text":
-                        print(content.text.value)
-                        
-                        # Explicitly verify citations
-                        print("\n" + "-"*40)
-                        print(f"CITATION AUDIT:")
-                        count = 0
-                        if content.text.annotations:
-                            for ann in content.text.annotations:
-                                if hasattr(ann, 'url_citation'):
-                                    count += 1
-                                    print(f" [{count}] {ann.url_citation.url}")
-                        print(f"\nTotal Sources Found: {count}")
+                for content in getattr(msg, 'content', []):
+                    if getattr(content, 'type', '') == "text":
+                        text_obj = getattr(content, 'text', None)
+                        if text_obj:
+                            text_value = getattr(text_obj, 'value', str(text_obj))
+                            print(text_value)
+                            
+                            # Explicitly verify citations
+                            print("\n" + "-"*40)
+                            print(f"CITATION AUDIT:")
+                            count = 0
+                            annotations = getattr(text_obj, 'annotations', [])
+                            if annotations:
+                                for ann in annotations:
+                                    url_citation = getattr(ann, 'url_citation', None)
+                                    if url_citation:
+                                        url = getattr(url_citation, 'url', None)
+                                        if url:
+                                            count += 1
+                                            print(f" [{count}] {url}")
+                            print(f"\nTotal Sources Found: {count}")
                 break
     else:
         print(f"\nRUN FAILED: {run.last_error}")
