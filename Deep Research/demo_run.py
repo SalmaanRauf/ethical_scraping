@@ -39,12 +39,22 @@ You are an expert analyst at Protiviti. Your goal is VOLUME and VERIFICATION.
 If you have fewer than 15 sources, your job is NOT done. Loop and search again.
 """
 
-def extract_bing_query(step_obj):
+def process_step_update(step_obj):
     """
-    Senior Staff Level Debugging:
-    Recursively hunt for 'bing_grounding' or 'query' inside the raw step dictionary.
-    This bypasses SDK attribute changes/versions.
+    Enhanced Polling Logic:
+    1. Checks High-Level Metadata for 'cot_summary' (The Agent's Thoughts).
+    2. Recursively hunts for Bing Queries (The Agent's Actions).
     """
+    # 1. Check for Chain of Thought (cot_summary) in Metadata
+    # This is where the model explains *why* it is doing something.
+    try:
+        metadata = getattr(step_obj, 'metadata', {})
+        if metadata and 'cot_summary' in metadata:
+            return f"🧠 [THOUGHT] {metadata['cot_summary']}"
+    except:
+        pass
+
+    # 2. Prepare for Recursive Search (Actions/Tools)
     try:
         # Convert to dict if it's a model
         data = step_obj.model_dump() if hasattr(step_obj, 'model_dump') else (
@@ -53,17 +63,12 @@ def extract_bing_query(step_obj):
     except:
         return None
 
-    # Recursive search function
+    # Recursive search function for Tool Calls
     def search_dict(d):
         if isinstance(d, dict):
             # Check for Bing Grounding specific signature
             if 'bing_grounding' in d and 'query' in d['bing_grounding']:
                 return f"🌐 [BING] {d['bing_grounding']['query']}"
-            
-            # Check for generic tool calls that might be Deep Research thinking
-            if 'type' in d and d['type'] == 'function':
-                if 'name' in d and 'deep_research' in d.get('name', ''):
-                    return "🧠 [THOUGHT] Deep Research Loop Planning..."
             
             # Recurse
             for k, v in d.items():
@@ -130,10 +135,11 @@ def main():
     start_time = time.time()
     
     # Force print initial status
-    print(f"\n🚀 MONITORING AGENT BRAIN (Real-time)...\n")
+    print(f"\n🚀 MONITORING AGENT BRAIN (Pseudo-Streaming)...\n")
 
+    # --- PSEUDO STREAMING LOOP ---
     while run.status in ["queued", "in_progress", "requires_action"]:
-        time.sleep(2) # Polling wait
+        time.sleep(3) # Polling wait (Increased to 3s to reduce API spam)
         
         # Refresh Status
         run = client.agents.runs.get(thread_id=thread.id, run_id=run.id)
@@ -148,16 +154,18 @@ def main():
             
             for step in sorted_steps:
                 if step.id not in processed_steps:
-                    # 1. Try to extract Bing Query using the Universal Extractor
-                    log_msg = extract_bing_query(step)
+                    
+                    # 1. Process the update (Thoughts or Actions)
+                    log_msg = process_step_update(step)
                     
                     if log_msg:
                         print(log_msg)
                     elif getattr(step, 'type', '') == 'message_creation':
-                        print(f"  📝 [DRAFTING] Synthesizing Report Part...")
+                        print(f"  📝 [DRAFTING] Synthesizing Final Report...")
+                    elif getattr(step, 'type', '') == 'tool_calls':
+                        # Fallback if the extractor didn't find a specific query but we see tools
+                        print(f"  ⚙️  [TOOL] Processing Search Results...")
                     else:
-                        # Fallback: Print type just so we know it's alive
-                        # print(f"  [ACTIVITY] {getattr(step, 'type', 'Unknown')}")
                         pass
 
                     processed_steps.add(step.id)
