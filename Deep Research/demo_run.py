@@ -1,7 +1,6 @@
 import os
 import time
-import json
-import logging
+from typing import Optional
 from dotenv import load_dotenv
 from azure.identity import DefaultAzureCredential
 from azure.ai.projects import AIProjectClient
@@ -9,7 +8,8 @@ from azure.ai.agents.models import (
     DeepResearchToolDefinition,
     DeepResearchDetails,
     DeepResearchBingGroundingConnection,
-    MessageRole
+    MessageRole,
+    AgentRole
 )
 
 load_dotenv()
@@ -20,11 +20,9 @@ MODEL_DEPLOYMENT = os.getenv("MODEL_DEPLOYMENT_NAME")
 DEEP_MODEL = os.getenv("DEEP_RESEARCH_MODEL_DEPLOYMENT_NAME")
 BING_CONNECTION = os.getenv("BING_CONNECTION_NAME")
 
-# --- PROMPT V4: THE "SCORCHED EARTH" AUDITOR ---
 COMBINED_INSTRUCTIONS = """
 # ROLE: Senior Defense Sector BD Intelligence Agent (Deep Research Mode)
 You are an expert analyst at Protiviti. Your goal is VOLUME and VERIFICATION.
-
 # MISSION: Anduril Industries Deep Dive
 1. **Recompetes:** Identify contracts ending 2025-2027 (Contract #, Value).
 2. **Protests:** Find GAO Decision B-numbers.
@@ -33,20 +31,53 @@ You are an expert analyst at Protiviti. Your goal is VOLUME and VERIFICATION.
 # THE "20-SOURCE" RULE
 - **Constraint:** You must acquire 20 DISTINCT unique citations.
 - **Diversity:** Do not cite 'cinch.com' or 'anduril.com' more than 3 times each.
-- **Fallback:** If stuck, search 'usaspending.gov', 'defense.gov', 'breakingdefense.com'.
-
-If you have fewer than 15 sources, your job is NOT done. Loop and search again.
 """
 
+# --- THE MISSING HELPER FUNCTION FROM THE VIDEO ---
+def fetch_and_print_new_agent_response(
+    client: AIProjectClient, 
+    thread_id: str, 
+    last_message_id: Optional[str] = None
+) -> Optional[str]:
+    """
+    Polls for NEW messages from the agent while the run is active.
+    Deep Research emits 'cot_summary' updates as messages during execution.
+    """
+    try:
+        messages = client.agents.messages.list(
+            thread_id=thread_id,
+            limit=1,
+            order="desc"
+        )
+        
+        msg_list = list(messages) if hasattr(messages, '__iter__') else messages.data
+        if not msg_list:
+            return last_message_id
+
+        latest_msg = msg_list[0]
+
+        if latest_msg.id != last_message_id and latest_msg.role == AgentRole.AGENT:
+            for content in latest_msg.content:
+                if hasattr(content, 'text'):
+                    text_val = content.text.value
+                    print(f"\n🧠 [AGENT UPDATE] {text_val}")
+                    if hasattr(content, 'metadata') and 'cot_summary' in content.metadata:
+                        print(f"   (Thought: {content.metadata['cot_summary']})")
+            return latest_msg.id
+            
+    except Exception:
+        pass
+    
+    return last_message_id
+
 def main():
-    print(f"\n--- DEFENSE INTELLIGENCE TERMINAL [Deep Dive Mode] ---")
+    print(f"\n--- DEFENSE INTELLIGENCE TERMINAL [Video Implementation] ---")
     
     client = AIProjectClient(
         endpoint=PROJECT_ENDPOINT,
         credential=DefaultAzureCredential()
     )
 
-    # --- FIX: Fetch Connection ID dynamically ---
     try:
         bing_conn_obj = client.connections.get(connection_name=BING_CONNECTION)
         bing_conn_id = bing_conn_obj.id
@@ -62,7 +93,6 @@ def main():
         )
     )
 
-    print(f"[*] Deploying Agent...")
     agent = client.agents.create_agent(
         model=MODEL_DEPLOYMENT,
         name="defense-deep-researcher",
@@ -70,17 +100,8 @@ def main():
         tools=[deep_tool]
     )
 
-    user_query = """
-    Conduct a comprehensive market analysis on "Anduril Industries".
-    REQUIREMENTS:
-    1. RECOMPETES: Top 3 contracts ending 2025-2026.
-    2. PROTESTS: Identify 2 specific GAO protest decisions.
-    3. COMPLIANCE: CMMC / NIST 800-171 status.
-    CONSTRAINT: 20 UNIQUE SOURCES. Verify everything.
-    """
+    user_query = "Conduct a comprehensive market analysis on 'Anduril Industries'. CONSTRAINT: 20 UNIQUE SOURCES."
     
-    print(f"[*] Sending Prompt...")
-
     thread = client.agents.threads.create()
     client.agents.messages.create(
         thread_id=thread.id,
@@ -88,100 +109,24 @@ def main():
         content=user_query
     )
 
-    print(f"[*] Starting Run loop...")
+    print(f"[*] Starting Deep Research Run...")
     run = client.agents.runs.create(thread_id=thread.id, agent_id=agent.id)
 
-    # Track distinct CONTENT we have printed, not just Step IDs
-    printed_thoughts = set()
-    printed_queries = set()
-    start_time = time.time()
+    # --- POLLING LOOP WITH MESSAGE CHECK ---
+    last_msg_id = None
     
-    print(f"\n🚀 MONITORING AGENT BRAIN (Real-time Updates)...\n")
-
-    # --- IMPROVED POLLING LOOP ---
     while run.status in ["queued", "in_progress", "requires_action"]:
-        time.sleep(2) # Polling wait
-        
-        try:
-            # 1. Get Latest Run & Steps
-            run = client.agents.runs.get(thread_id=thread.id, run_id=run.id)
-            steps = client.agents.list_run_steps(thread_id=thread.id, run_id=run.id)
-            
-            # 2. Check Run-Level Metadata for high-level thoughts
-            # (Sometimes the big 'Plan' appears here)
-            if run.metadata and 'cot_summary' in run.metadata:
-                thought = run.metadata['cot_summary']
-                if thought not in printed_thoughts:
-                    print(f"🧠 [PLANNING] {thought}", flush=True)
-                    printed_thoughts.add(thought)
-
-            # 3. Check Individual Steps
-            steps_data = list(steps) if hasattr(steps, '__iter__') else steps.data
-            sorted_steps = sorted(steps_data, key=lambda x: getattr(x, 'created_at', 0))
-            
-            for step in sorted_steps:
-                # Dump the step to dict to avoid SDK attribute errors
-                try:
-                    step_raw = step.model_dump() if hasattr(step, 'model_dump') else step.__dict__
-                except:
-                    continue
-
-                # --- A. Check for Thoughts (Step Metadata) ---
-                meta = step_raw.get('metadata', {}) or {}
-                if 'cot_summary' in meta:
-                    thought = meta['cot_summary']
-                    if thought and thought not in printed_thoughts:
-                        print(f"🤔 [THOUGHT] {thought}", flush=True)
-                        printed_thoughts.add(thought)
-
-                # --- B. Check for Bing Queries (Tool Calls) ---
-                step_details = step_raw.get('step_details', {})
-                if step_details and 'tool_calls' in step_details:
-                    for tool in step_details['tool_calls']:
-                        # Deep Research uses 'bing_grounding' or similar inside the tool args
-                        try:
-                            # Look for 'query' in the function arguments
-                            if 'function' in tool:
-                                args_str = tool['function'].get('arguments', '')
-                                if args_str and args_str not in printed_queries:
-                                    # It's a JSON string, try to parse it cleanly
-                                    try:
-                                        import json
-                                        args_json = json.loads(args_str)
-                                        if 'query' in args_json:
-                                            q = args_json['query']
-                                            print(f"🌐 [SEARCH] {q}", flush=True)
-                                            printed_queries.add(args_str) # Mark exact args as seen
-                                    except:
-                                        # If raw string isn't valid JSON yet (streaming), skip or print raw
-                                        pass
-                            
-                            # Look for explicit bing_grounding dict (older SDK versions)
-                            elif 'bing_grounding' in tool:
-                                q = tool['bing_grounding'].get('query')
-                                if q and q not in printed_queries:
-                                    print(f"🌐 [SEARCH] {q}", flush=True)
-                                    printed_queries.add(q)
-                        except:
-                            pass
-
-                # --- C. Check for Report Drafting ---
-                if step_raw.get('type') == 'message_creation' and step.status == 'in_progress':
-                     # Only print this once per step ID
-                     if step.id not in printed_thoughts:
-                         print(f"📝 [WRITING] Synthesizing findings...", flush=True)
-                         printed_thoughts.add(step.id)
-
-        except Exception as e:
-            # Silently ignore polling errors to keep terminal clean
-            pass
+        time.sleep(3) 
+        last_msg_id = fetch_and_print_new_agent_response(client, thread.id, last_msg_id)
+        run = client.agents.runs.get(thread_id=thread.id, run_id=run.id)
 
     print("\n" + "="*80)
     
+    # --- THIS WAS MISSING: THE FINAL REPORT & SOURCE CHECK ---
     if run.status == "completed":
-        duration = time.time() - start_time
-        print(f"✅ COMPLETE ({duration:.1f}s)")
+        print(f"✅ COMPLETE")
         
+        # We fetch the messages one last time to get the FINAL, clean report
         messages = client.agents.messages.list(thread_id=thread.id)
         messages_list = list(messages) if hasattr(messages, '__iter__') else messages.data
         
@@ -191,12 +136,13 @@ def main():
                     if getattr(content, 'type', '') == "text":
                         text_obj = getattr(content, 'text', None)
                         if text_obj:
-                            val = getattr(text_obj, 'value', '')
-                            print(val)
+                            # 1. Print the Final Report (Cleanly)
+                            print("\n📜 FINAL INTELLIGENCE REPORT:")
+                            print(text_obj.value)
                             
-                            # --- SOURCE AUDIT ---
+                            # 2. AUDIT THE SOURCES (Crucial for your prompt)
                             print("\n" + "-"*40)
-                            print(f"📊 FINAL SOURCE AUDIT:")
+                            print(f"📊 SOURCE VERIFICATION:")
                             unique_urls = set()
                             annotations = getattr(text_obj, 'annotations', [])
                             if annotations:
@@ -214,9 +160,9 @@ def main():
                             
                             print(f"\nTotal UNIQUE Sources: {len(unique_urls)}")
                             if len(unique_urls) < 15:
-                                print(f"⚠️  Result: {len(unique_urls)} sources.")
+                                print(f"⚠️  WARNING: Target Missed ({len(unique_urls)}/20)")
                             else:
-                                print(f"🏆 SUCCESS: {len(unique_urls)} sources found!")
+                                print(f"🏆 TARGET HIT: {len(unique_urls)} sources confirmed.")
                 break
     else:
         print(f"\n❌ FAILED: {run.last_error}")
