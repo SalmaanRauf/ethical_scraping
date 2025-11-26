@@ -21,7 +21,6 @@ DEEP_MODEL = os.getenv("DEEP_RESEARCH_MODEL_DEPLOYMENT_NAME")
 BING_CONNECTION = os.getenv("BING_CONNECTION_NAME")
 
 # --- PROMPT V4: THE "SCORCHED EARTH" AUDITOR ---
-# We keep the high-pressure source constraint.
 COMBINED_INSTRUCTIONS = """
 # ROLE: Senior Defense Sector BD Intelligence Agent (Deep Research Mode)
 You are an expert analyst at Protiviti. Your goal is VOLUME and VERIFICATION.
@@ -39,50 +38,6 @@ You are an expert analyst at Protiviti. Your goal is VOLUME and VERIFICATION.
 If you have fewer than 15 sources, your job is NOT done. Loop and search again.
 """
 
-def process_step_update(step_obj):
-    """
-    Enhanced Polling Logic:
-    1. Checks High-Level Metadata for 'cot_summary' (The Agent's Thoughts).
-    2. Recursively hunts for Bing Queries (The Agent's Actions).
-    """
-    # 1. Check for Chain of Thought (cot_summary) in Metadata
-    # This is where the model explains *why* it is doing something.
-    try:
-        metadata = getattr(step_obj, 'metadata', {})
-        if metadata and 'cot_summary' in metadata:
-            return f"🧠 [THOUGHT] {metadata['cot_summary']}"
-    except:
-        pass
-
-    # 2. Prepare for Recursive Search (Actions/Tools)
-    try:
-        # Convert to dict if it's a model
-        data = step_obj.model_dump() if hasattr(step_obj, 'model_dump') else (
-            step_obj.as_dict() if hasattr(step_obj, 'as_dict') else step_obj.__dict__
-        )
-    except:
-        return None
-
-    # Recursive search function for Tool Calls
-    def search_dict(d):
-        if isinstance(d, dict):
-            # Check for Bing Grounding specific signature
-            if 'bing_grounding' in d and 'query' in d['bing_grounding']:
-                return f"🌐 [BING] {d['bing_grounding']['query']}"
-            
-            # Recurse
-            for k, v in d.items():
-                res = search_dict(v)
-                if res: return res
-        
-        elif isinstance(d, list):
-            for item in d:
-                res = search_dict(item)
-                if res: return res
-        return None
-
-    return search_dict(data)
-
 def main():
     print(f"\n--- DEFENSE INTELLIGENCE TERMINAL [Deep Dive Mode] ---")
     
@@ -91,11 +46,18 @@ def main():
         credential=DefaultAzureCredential()
     )
 
+    # --- FIX: Fetch Connection ID dynamically ---
+    try:
+        bing_conn_obj = client.connections.get(connection_name=BING_CONNECTION)
+        bing_conn_id = bing_conn_obj.id
+    except:
+        bing_conn_id = BING_CONNECTION
+
     deep_tool = DeepResearchToolDefinition(
         deep_research=DeepResearchDetails(
             deep_research_model=DEEP_MODEL,
             deep_research_bing_grounding_connections=[
-                DeepResearchBingGroundingConnection(connection_id=BING_CONNECTION)
+                DeepResearchBingGroundingConnection(connection_id=bing_conn_id)
             ]
         )
     )
@@ -108,14 +70,12 @@ def main():
         tools=[deep_tool]
     )
 
-    # --- HARDCODED STRESS TEST ---
     user_query = """
     Conduct a comprehensive market analysis on "Anduril Industries".
     REQUIREMENTS:
     1. RECOMPETES: Top 3 contracts ending 2025-2026.
     2. PROTESTS: Identify 2 specific GAO protest decisions.
     3. COMPLIANCE: CMMC / NIST 800-171 status.
-    
     CONSTRAINT: 20 UNIQUE SOURCES. Verify everything.
     """
     
@@ -131,46 +91,89 @@ def main():
     print(f"[*] Starting Run loop...")
     run = client.agents.runs.create(thread_id=thread.id, agent_id=agent.id)
 
-    processed_steps = set()
+    # Track distinct CONTENT we have printed, not just Step IDs
+    printed_thoughts = set()
+    printed_queries = set()
     start_time = time.time()
     
-    # Force print initial status
-    print(f"\n🚀 MONITORING AGENT BRAIN (Pseudo-Streaming)...\n")
+    print(f"\n🚀 MONITORING AGENT BRAIN (Real-time Updates)...\n")
 
-    # --- PSEUDO STREAMING LOOP ---
+    # --- IMPROVED POLLING LOOP ---
     while run.status in ["queued", "in_progress", "requires_action"]:
-        time.sleep(3) # Polling wait (Increased to 3s to reduce API spam)
-        
-        # Refresh Status
-        run = client.agents.runs.get(thread_id=thread.id, run_id=run.id)
+        time.sleep(2) # Polling wait
         
         try:
-            # Fetch steps
+            # 1. Get Latest Run & Steps
+            run = client.agents.runs.get(thread_id=thread.id, run_id=run.id)
             steps = client.agents.list_run_steps(thread_id=thread.id, run_id=run.id)
             
-            # Iterate safely
+            # 2. Check Run-Level Metadata for high-level thoughts
+            # (Sometimes the big 'Plan' appears here)
+            if run.metadata and 'cot_summary' in run.metadata:
+                thought = run.metadata['cot_summary']
+                if thought not in printed_thoughts:
+                    print(f"🧠 [PLANNING] {thought}", flush=True)
+                    printed_thoughts.add(thought)
+
+            # 3. Check Individual Steps
             steps_data = list(steps) if hasattr(steps, '__iter__') else steps.data
             sorted_steps = sorted(steps_data, key=lambda x: getattr(x, 'created_at', 0))
             
             for step in sorted_steps:
-                if step.id not in processed_steps:
-                    
-                    # 1. Process the update (Thoughts or Actions)
-                    log_msg = process_step_update(step)
-                    
-                    if log_msg:
-                        print(log_msg)
-                    elif getattr(step, 'type', '') == 'message_creation':
-                        print(f"  📝 [DRAFTING] Synthesizing Final Report...")
-                    elif getattr(step, 'type', '') == 'tool_calls':
-                        # Fallback if the extractor didn't find a specific query but we see tools
-                        print(f"  ⚙️  [TOOL] Processing Search Results...")
-                    else:
-                        pass
+                # Dump the step to dict to avoid SDK attribute errors
+                try:
+                    step_raw = step.model_dump() if hasattr(step, 'model_dump') else step.__dict__
+                except:
+                    continue
 
-                    processed_steps.add(step.id)
+                # --- A. Check for Thoughts (Step Metadata) ---
+                meta = step_raw.get('metadata', {}) or {}
+                if 'cot_summary' in meta:
+                    thought = meta['cot_summary']
+                    if thought and thought not in printed_thoughts:
+                        print(f"🤔 [THOUGHT] {thought}", flush=True)
+                        printed_thoughts.add(thought)
+
+                # --- B. Check for Bing Queries (Tool Calls) ---
+                step_details = step_raw.get('step_details', {})
+                if step_details and 'tool_calls' in step_details:
+                    for tool in step_details['tool_calls']:
+                        # Deep Research uses 'bing_grounding' or similar inside the tool args
+                        try:
+                            # Look for 'query' in the function arguments
+                            if 'function' in tool:
+                                args_str = tool['function'].get('arguments', '')
+                                if args_str and args_str not in printed_queries:
+                                    # It's a JSON string, try to parse it cleanly
+                                    try:
+                                        import json
+                                        args_json = json.loads(args_str)
+                                        if 'query' in args_json:
+                                            q = args_json['query']
+                                            print(f"🌐 [SEARCH] {q}", flush=True)
+                                            printed_queries.add(args_str) # Mark exact args as seen
+                                    except:
+                                        # If raw string isn't valid JSON yet (streaming), skip or print raw
+                                        pass
+                            
+                            # Look for explicit bing_grounding dict (older SDK versions)
+                            elif 'bing_grounding' in tool:
+                                q = tool['bing_grounding'].get('query')
+                                if q and q not in printed_queries:
+                                    print(f"🌐 [SEARCH] {q}", flush=True)
+                                    printed_queries.add(q)
+                        except:
+                            pass
+
+                # --- C. Check for Report Drafting ---
+                if step_raw.get('type') == 'message_creation' and step.status == 'in_progress':
+                     # Only print this once per step ID
+                     if step.id not in printed_thoughts:
+                         print(f"📝 [WRITING] Synthesizing findings...", flush=True)
+                         printed_thoughts.add(step.id)
+
         except Exception as e:
-            # Don't crash on visualization errors, just keep polling
+            # Silently ignore polling errors to keep terminal clean
             pass
 
     print("\n" + "="*80)
@@ -198,10 +201,13 @@ def main():
                             annotations = getattr(text_obj, 'annotations', [])
                             if annotations:
                                 for ann in annotations:
-                                    url_citation = getattr(ann, 'url_citation', None)
-                                    if url_citation:
-                                        url = getattr(url_citation, 'url', None)
-                                        if url: unique_urls.add(url)
+                                    try:
+                                        url_citation = getattr(ann, 'url_citation', None)
+                                        if url_citation:
+                                            url = getattr(url_citation, 'url', None)
+                                            if url: unique_urls.add(url)
+                                    except:
+                                        pass
                             
                             for i, url in enumerate(unique_urls, 1):
                                 print(f" [{i}] {url}")
