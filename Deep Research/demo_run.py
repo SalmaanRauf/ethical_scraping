@@ -3,6 +3,7 @@ import time
 from dotenv import load_dotenv
 from azure.identity import DefaultAzureCredential
 from azure.ai.projects import AIProjectClient
+from azure.ai.projects.models import AgentEventHandler
 from azure.ai.agents.models import (
     DeepResearchToolDefinition,
     DeepResearchDetails,
@@ -12,71 +13,87 @@ from azure.ai.agents.models import (
 
 load_dotenv()
 
+# --- CONFIGURATION ---
 PROJECT_ENDPOINT = os.getenv("PROJECT_ENDPOINT")
 MODEL_DEPLOYMENT = os.getenv("MODEL_DEPLOYMENT_NAME")
 DEEP_MODEL = os.getenv("DEEP_RESEARCH_MODEL_DEPLOYMENT_NAME")
 BING_CONNECTION = os.getenv("BING_CONNECTION_NAME")
 
-# --- PROMPT V3: THE "PARANOID" RESEARCHER ---
+# --- THE "PARANOID" PROMPT (Proven to get ~11-14 sources, aiming for 20) ---
 COMBINED_INSTRUCTIONS = """
 # ROLE: Senior Defense Sector BD Intelligence Agent (Deep Research Mode)
-You are an expert analyst at Protiviti. Your goal is NOT efficiency; it is VOLUME and VERIFICATION.
+You are an expert analyst at Protiviti. Your goal is VOLUME and VERIFICATION.
 
-# CORE MISSION
-1. **Recompetes:** Identify contracts ending 2025-2027.
+# MISSION: Anduril Industries Deep Dive
+1. **Recompetes:** Identify contracts ending 2025-2027 (Contract #, Value).
 2. **Protests:** Find GAO Decision B-numbers.
-3. **Compliance:** CMMC/NIST status.
+3. **Compliance:** CMMC / NIST 800-171 status.
 
 # THE "20-SOURCE" RULE
-You have a strict quota: **You must acquire 20 distinct URL citations.**
-- If you find 11 sources, YOU ARE NOT DONE.
-- If you run out of ideas, perform these SPECIFIC searches:
-  - "Anduril Industries contract award usaspending.gov"
-  - "Anduril Industries SBIR Phase III awards"
-  - "Anduril Industries GAO protest file"
-  - "Anduril Industries press release 2024"
-  - "Anduril Industries press release 2025"
+- **Constraint:** You must acquire 20 DISTINCT unique citations.
+- **Diversity:** Do not cite 'cinch.com' or 'anduril.com' more than 3 times each.
+- **Fallback:** If stuck, search 'usaspending.gov', 'defense.gov', 'breakingdefense.com'.
 
-# EXECUTION LOOP
-1. **Search**: Run broad queries.
-2. **Audit**: Count your UNIQUE domains.
-3. **Loop**: If < 20 unique domains, run niche searches.
-4. **Report**: Only write the report once the data vault is full.
-
-# OUTPUT
-- Executive Briefing format.
-- **CITATION SECTION**: List every single unique URL found.
+If you have fewer than 15 sources, your job is NOT done. Loop and search again.
 """
 
-def print_step_details(step):
-    """Robust step printer that catches ALL tool activity."""
-    try:
+# --- THE MATRIX-STYLE EVENT HANDLER ---
+class DeepResearchEventHandler(AgentEventHandler):
+    """
+    This handler hooks into the live server events to print thoughts/searches 
+    the moment they happen, replicating the Microsoft Demo experience.
+    """
+    def __init__(self):
+        super().__init__()
+        self.last_printed_step = None
+
+    def on_run_step_created(self, step):
+        # When a new "Brain Step" starts (e.g., Searching, Thinking)
         if step.type == "tool_calls":
-            for tool_call in step.step_details.tool_calls:
-                # 1. Bing Search
-                if getattr(tool_call, 'type', '') == 'bing_grounding':
-                    query = getattr(tool_call.bing_grounding, 'query', 'Unknown')
-                    print(f"\n  🌐 [BING] {query}")
-                
-                # 2. Any other tool (including Deep Research internal logic)
-                elif getattr(tool_call, 'function', None):
-                    fname = tool_call.function.name
-                    print(f"\n  🧠 [THOUGHT] Executing: {fname}...")
-        
+            print(f"\n  ⚡ [ACTIVATING TOOL] Analyzing request...", end="", flush=True)
         elif step.type == "message_creation":
-            print(f"\n  📝 [AGENT] Synthesizing data...")
-    except Exception as e:
-        # Fallback for weird objects
-        print(f"\n  [ACTIVITY] {step.type}")
+            print(f"\n  📝 [DRAFTING] Synthesizing report...", end="", flush=True)
+
+    def on_run_step_delta(self, delta, snapshot):
+        # This captures the "Streaming Updates" inside a step
+        if delta.step_details and delta.step_details.tool_calls:
+            for tool_call in delta.step_details.tool_calls:
+                # Check if it's a Bing Search (Grounding)
+                if getattr(tool_call, 'bing_grounding', None):
+                    query = getattr(tool_call.bing_grounding, 'query', None)
+                    if query:
+                        print(f"\n  🌐 [BING SEARCH] {query}")
+                
+                # Check if it's the Deep Research "Reasoning" (Chain of Thought)
+                # Note: Sometimes o3 emits thoughts as 'code_interpreter' logs or specific function args
+                elif getattr(tool_call, 'function', None):
+                    args = getattr(tool_call.function, 'arguments', '')
+                    if args:
+                        # Clean up the raw JSON string for display
+                        clean_args = args.replace('\n', ' ').strip()[:100]
+                        print(f"\r  🧠 [THOUGHT] {clean_args}...", end="", flush=True)
+
+    def on_message_delta(self, delta, snapshot):
+        # This captures the final text being typed out
+        if delta.content:
+            for content_part in delta.content:
+                if content_part.type == "text":
+                    # Print text as it streams (The "Typewriter" effect)
+                    print(content_part.text.value, end="", flush=True)
+
+    def on_error(self, error):
+        print(f"\n  ❌ [STREAM ERROR] {error}")
 
 def main():
-    print(f"\n--- DEFENSE INTELLIGENCE TERMINAL [Final Audit] ---")
+    print(f"\n--- DEFENSE INTELLIGENCE TERMINAL [Streaming Mode] ---")
     
+    # 1. Initialize Client
     client = AIProjectClient(
         endpoint=PROJECT_ENDPOINT,
         credential=DefaultAzureCredential()
     )
 
+    # 2. Define Tool
     deep_tool = DeepResearchToolDefinition(
         deep_research=DeepResearchDetails(
             deep_research_model=DEEP_MODEL,
@@ -86,29 +103,27 @@ def main():
         )
     )
 
-    print(f"[*] Deploying Agent...")
+    # 3. Create Agent
+    print(f"[*] Deploying Streaming Agent...")
     agent = client.agents.create_agent(
         model=MODEL_DEPLOYMENT,
-        name="defense-deep-researcher",
+        name="defense-streamer",
         instructions=COMBINED_INSTRUCTIONS,
         tools=[deep_tool]
     )
 
-    # --- HARDCODED PROMPT ---
+    # 4. Hardcoded Prompt (The Stress Test)
     user_query = """
     Conduct a comprehensive market analysis on "Anduril Industries".
-    
     REQUIREMENTS:
-    1. RECOMPETES: Top 3 contracts ending 2025-2026 (Contract #, Value).
-    2. PROTESTS: Identify 2 specific GAO protest decisions (B-Numbers).
+    1. RECOMPETES: Top 3 contracts ending 2025-2026.
+    2. PROTESTS: Identify 2 specific GAO protest decisions.
     3. COMPLIANCE: CMMC / NIST 800-171 status.
-
-    CONSTRAINT: CITATION QUOTA = 20 UNIQUE SOURCES.
-    Do not stop searching until you have wide coverage (Gov, News, Industry Blogs).
+    
+    CONSTRAINT: 20 UNIQUE SOURCES. Verify everything.
     """
     
-    print(f"[*] Prompt Sent. Starting Loop...")
-
+    # 5. Start Thread
     thread = client.agents.threads.create()
     client.agents.messages.create(
         thread_id=thread.id,
@@ -116,75 +131,46 @@ def main():
         content=user_query
     )
 
-    run = client.agents.runs.create(thread_id=thread.id, agent_id=agent.id)
+    print(f"[*] Prompt Sent. Opening Data Stream...\n")
+    print("="*80)
 
-    processed_steps = set()
-    start_time = time.time()
-
-    print(f"\n🚀 RUNNING (Dots indicate heartbeat)...\n")
-
-    while run.status in ["queued", "in_progress", "requires_action"]:
-        # Print a dot every loop so you know it's alive
-        print(".", end="", flush=True) 
-        time.sleep(2)
-        
-        run = client.agents.runs.get(thread_id=thread.id, run_id=run.id)
-        
-        try:
-            steps = client.agents.list_run_steps(thread_id=thread.id, run_id=run.id)
-            # Safe Iterator handling
-            steps_list = list(steps) if hasattr(steps, '__iter__') else steps.data
-            sorted_steps = sorted(steps_list, key=lambda x: getattr(x, 'created_at', 0))
-            
-            for step in sorted_steps:
-                if step.id not in processed_steps:
-                    print_step_details(step)
-                    processed_steps.add(step.id)
-        except Exception:
-            pass
+    # 6. THE STREAMING EXECUTION
+    # This replaces the "While Loop" with a live connection
+    with client.agents.create_stream(
+        thread_id=thread.id,
+        assistant_id=agent.id,
+        event_handler=DeepResearchEventHandler() # <--- The Magic Hook
+    ) as stream:
+        stream.until_done()
 
     print("\n" + "="*80)
+    print(f"✅ STREAM COMPLETE")
+
+    # 7. Final Audit (To verify the 20-source count)
+    print(f"\n📊 PERFORMING FINAL CITATION AUDIT...")
+    messages = client.agents.messages.list(thread_id=thread.id)
+    messages_list = list(messages) if hasattr(messages, '__iter__') else messages.data
     
-    if run.status == "completed":
-        duration = time.time() - start_time
-        print(f"✅ COMPLETE ({duration:.1f}s)")
-        
-        messages = client.agents.messages.list(thread_id=thread.id)
-        messages_list = list(messages) if hasattr(messages, '__iter__') else messages.data
-        
-        for msg in messages_list:
-            if getattr(msg, 'role', '') == "assistant":
-                for content in getattr(msg, 'content', []):
-                    if getattr(content, 'type', '') == "text":
-                        text_obj = getattr(content, 'text', None)
-                        if text_obj:
-                            # Print Report
-                            print(getattr(text_obj, 'value', ''))
-                            
-                            # --- FINAL AUDIT ---
-                            print("\n" + "-"*40)
-                            print(f"📊 FINAL SOURCE AUDIT:")
-                            unique_urls = set()
-                            annotations = getattr(text_obj, 'annotations', [])
-                            if annotations:
-                                for ann in annotations:
-                                    url_citation = getattr(ann, 'url_citation', None)
-                                    if url_citation:
-                                        url = getattr(url_citation, 'url', None)
-                                        if url:
-                                            unique_urls.add(url)
-                            
-                            for i, url in enumerate(unique_urls, 1):
-                                print(f" [{i}] {url}")
-                            
-                            print(f"\nTotal UNIQUE Sources: {len(unique_urls)}")
-                            if len(unique_urls) < 15:
-                                print(f"⚠️  Result: {len(unique_urls)} sources. (Still under 15, but getting closer)")
-                            else:
-                                print(f"🏆 SUCCESS: {len(unique_urls)} sources found!")
-                break
-    else:
-        print(f"\n❌ FAILED: {run.last_error}")
+    for msg in messages_list:
+        if getattr(msg, 'role', '') == "assistant":
+            for content in getattr(msg, 'content', []):
+                if getattr(content, 'type', '') == "text":
+                    text_obj = getattr(content, 'text', None)
+                    if text_obj:
+                        unique_urls = set()
+                        annotations = getattr(text_obj, 'annotations', [])
+                        if annotations:
+                            for ann in annotations:
+                                if hasattr(ann, 'url_citation'):
+                                    url = getattr(ann.url_citation, 'url', None)
+                                    if url: unique_urls.add(url)
+                        
+                        print(f"Total UNIQUE Sources Found: {len(unique_urls)}")
+                        if len(unique_urls) >= 15:
+                            print(f"🏆 SUCCESS: {len(unique_urls)} sources.")
+                        else:
+                            print(f"⚠️  WARNING: Only {len(unique_urls)} sources.")
+            break
 
     try:
         client.agents.delete_agent(agent.id)
