@@ -362,8 +362,8 @@ REMEMBER: Volume AND quality. More sources = more verification = higher confiden
                 logger.debug(f"Could not fetch steps: {e}")
             
             try:
-                # Fetch messages (iterate directly, don't convert to list)
-                messages = await self._client.agents.messages.list(
+                # Fetch messages (iterate directly, don't await AsyncItemPaged)
+                messages = self._client.agents.messages.list(
                     thread_id=thread.id,
                     order="asc",
                     limit=100
