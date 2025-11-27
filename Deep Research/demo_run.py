@@ -37,21 +37,107 @@ You are an expert analyst at Protiviti. Your goal is VOLUME and VERIFICATION.
 If you have fewer than 15 sources, your job is NOT done. Loop and search again.
 """
 
-def main():
-    print(f"\n--- DEFENSE INTELLIGENCE TERMINAL [Safe Pseudo-Streaming] ---")
+def extract_text_from_message(msg) -> Optional[str]:
+    """
+    Safely extract text content from a message object.
+    Returns None if no text content is found.
+    """
+    try:
+        content_items = getattr(msg, 'content', [])
+        if not content_items:
+            return None
+        
+        text_parts = []
+        for content in content_items:
+            if getattr(content, 'type', '') == "text":
+                text_obj = getattr(content, 'text', None)
+                if text_obj:
+                    text_val = getattr(text_obj, 'value', None)
+                    if text_val:
+                        text_parts.append(text_val)
+        
+        return "\n".join(text_parts) if text_parts else None
+    except Exception as e:
+        return None
+
+def print_message_with_metadata(msg, is_new: bool = True):
+    """
+    Print a message with proper formatting and metadata.
+    """
+    text = extract_text_from_message(msg)
+    if not text:
+        return
     
+    # Determine message type
+    prefix = "🧠 [NEW UPDATE]" if is_new else "📄 [MESSAGE]"
+    
+    # Print main content
+    print(f"\n{prefix}")
+    print("-" * 60)
+    print(text)
+    
+    # Print metadata if available (Chain of Thought summaries)
+    try:
+        metadata = getattr(msg, 'metadata', {})
+        if metadata:
+            if 'cot_summary' in metadata:
+                print(f"\n💭 Thought Process: {metadata['cot_summary']}")
+            if 'reasoning' in metadata:
+                print(f"🔍 Reasoning: {metadata['reasoning']}")
+    except:
+        pass
+    
+    print("-" * 60)
+
+def extract_citations_from_message(msg) -> Set[str]:
+    """
+    Extract unique URLs from message annotations.
+    """
+    unique_urls = set()
+    try:
+        content_items = getattr(msg, 'content', [])
+        for content in content_items:
+            if getattr(content, 'type', '') == "text":
+                text_obj = getattr(content, 'text', None)
+                if text_obj:
+                    annotations = getattr(text_obj, 'annotations', [])
+                    for ann in annotations:
+                        try:
+                            url_citation = getattr(ann, 'url_citation', None)
+                            if url_citation:
+                                url = getattr(url_citation, 'url', None)
+                                if url:
+                                    unique_urls.add(url)
+                        except:
+                            continue
+    except:
+        pass
+    
+    return unique_urls
+
+def main():
+    print(f"\n{'='*80}")
+    print(f"🎯 DEFENSE INTELLIGENCE TERMINAL - Azure AI Deep Research")
+    print(f"{'='*80}\n")
+    
+    # Initialize client
     client = AIProjectClient(
         endpoint=PROJECT_ENDPOINT,
         credential=DefaultAzureCredential()
     )
 
     # --- Connection Setup ---
+    print(f"[1/5] 🔌 Establishing Bing Search connection...")
     try:
         bing_conn_obj = client.connections.get(connection_name=BING_CONNECTION)
         bing_conn_id = bing_conn_obj.id
-    except:
+        print(f"      ✓ Connected: {bing_conn_id[:50]}...")
+    except Exception as e:
         bing_conn_id = BING_CONNECTION
+        print(f"      ✓ Using connection name: {BING_CONNECTION}")
 
+    # --- Tool Definition ---
+    print(f"[2/5] 🛠️  Configuring Deep Research tool...")
     deep_tool = DeepResearchToolDefinition(
         deep_research=DeepResearchDetails(
             deep_research_model=DEEP_MODEL,
@@ -60,15 +146,19 @@ def main():
             ]
         )
     )
+    print(f"      ✓ Tool configured with model: {DEEP_MODEL}")
 
-    print(f"[*] Deploying Agent...")
+    # --- Agent Creation ---
+    print(f"[3/5] 🤖 Deploying Deep Research agent...")
     agent = client.agents.create_agent(
         model=MODEL_DEPLOYMENT,
         name="defense-deep-researcher",
         instructions=COMBINED_INSTRUCTIONS,
         tools=[deep_tool]
     )
+    print(f"      ✓ Agent deployed: {agent.id}")
 
+    # --- Query Definition ---
     user_query = """
     Conduct a comprehensive market analysis on "Anduril Industries".
     REQUIREMENTS:
@@ -78,120 +168,165 @@ def main():
     CONSTRAINT: 20 UNIQUE SOURCES. Verify everything.
     """
     
-    # Create Thread & Message
+    # --- Thread & Message Creation ---
+    print(f"[4/5] 💬 Creating conversation thread...")
     thread = client.agents.threads.create()
+    print(f"      ✓ Thread created: {thread.id}")
+    
     client.agents.messages.create(
         thread_id=thread.id,
         role=MessageRole.USER,
         content=user_query
     )
+    print(f"      ✓ Query submitted")
 
-    print(f"[*] Starting Run (Background Mode)...")
-    # CRITICAL: We do NOT use stream() here. We use create() to run in background.
+    # --- Run Execution ---
+    print(f"[5/5] 🚀 Initiating Deep Research run...\n")
     run = client.agents.runs.create(thread_id=thread.id, agent_id=agent.id)
 
     start_time = time.time()
     
-    print(f"\n🚀 MONITORING AGENT THREAD (Safe Polling)...")
-    print("=" * 60)
+    print(f"{'='*80}")
+    print(f"📡 LIVE PROGRESS MONITORING (Polling every 1.5s)")
+    print(f"{'='*80}\n")
 
-    # --- SAFE PSEUDO-STREAMING LOGIC ---
+    # --- PSEUDO-STREAMING WITH IMPROVED POLLING ---
     printed_message_ids: Set[str] = set()
+    last_status = None
+    poll_count = 0
+    all_citations: Set[str] = set()
     
     while run.status in ["queued", "in_progress", "requires_action"]:
-        time.sleep(3) # Wait 3 seconds to avoid API throttling
+        poll_count += 1
+        
+        # Status indicator (only print if status changed)
+        if run.status != last_status:
+            status_icon = "⏳" if run.status == "queued" else "⚙️" if run.status == "in_progress" else "❓"
+            print(f"\n{status_icon} Status: {run.status.upper()}")
+            last_status = run.status
+        
+        # Show activity indicator every 5 polls
+        if poll_count % 5 == 0:
+            elapsed = time.time() - start_time
+            print(f"   ⏱️  Elapsed: {elapsed:.1f}s | Messages tracked: {len(printed_message_ids)}")
         
         try:
-            # 1. Fetch the LATEST messages (reversed so we print oldest first)
-            # We fetch up to 20 to ensure we catch bursts of updates
+            # Fetch messages - use higher limit to catch bursts
+            # Order by asc to process chronologically
             messages = client.agents.messages.list(
                 thread_id=thread.id,
-                order="asc", # Get oldest first to maintain chronological order
-                limit=50 
+                order="asc",
+                limit=100  # Increased to catch all messages
             )
             
-            # Safe list conversion
-            msg_list = list(messages) if hasattr(messages, '__iter__') else messages.data
-
-            # 2. Iterate through messages
+            # Convert to list safely
+            msg_list = list(messages) if hasattr(messages, '__iter__') else getattr(messages, 'data', [])
+            
+            # Process new messages
+            new_messages_found = False
             for msg in msg_list:
-                # If we haven't seen this message ID yet...
-                if msg.id not in printed_message_ids:
+                # Skip if already printed
+                if msg.id in printed_message_ids:
+                    continue
+                
+                # Only process ASSISTANT messages (skip user messages)
+                if msg.role == MessageRole.ASSISTANT:
+                    print_message_with_metadata(msg, is_new=True)
+                    new_messages_found = True
                     
-                    # Only print Assistant (Agent) messages
-                    if msg.role == MessageRole.ASSISTANT:
-                        
-                        # Print every text block in the new message
-                        for content in getattr(msg, 'content', []):
-                            if getattr(content, 'type', '') == "text":
-                                text_val = getattr(content, 'text', None).value
-                                if text_val:
-                                    print(f"\n🧠 [AGENT UPDATE] {text_val}")
-                                    
-                                    # Check for metadata (Thoughts)
-                                    meta = getattr(msg, 'metadata', {})
-                                    if meta and 'cot_summary' in meta:
-                                        print(f"   (Thought: {meta['cot_summary']})")
-
-                    # Mark as seen
-                    printed_message_ids.add(msg.id)
-
-            # 3. Refresh Run Status
+                    # Extract citations from this message
+                    msg_citations = extract_citations_from_message(msg)
+                    if msg_citations:
+                        all_citations.update(msg_citations)
+                        print(f"📚 Running citation count: {len(all_citations)} sources")
+                
+                # Mark as printed (even user messages to avoid reprocessing)
+                printed_message_ids.add(msg.id)
+            
+            # Refresh run status
             run = client.agents.runs.get(thread_id=thread.id, run_id=run.id)
             
         except Exception as e:
-            # If a poll fails, just wait and try again. Do NOT crash.
-            pass
+            # Silently handle polling errors and continue
+            print(f"⚠️  Polling error (will retry): {str(e)[:100]}")
+        
+        # Poll every 1.5 seconds (good balance for responsiveness)
+        time.sleep(1.5)
 
+    # --- COMPLETION HANDLING ---
     print("\n" + "="*80)
     
+    duration = time.time() - start_time
+    
     if run.status == "completed":
-        duration = time.time() - start_time
-        print(f"✅ COMPLETE ({duration:.1f}s)")
+        print(f"✅ RESEARCH COMPLETED in {duration:.1f}s ({poll_count} polls)")
+        print("="*80)
         
-        # --- FINAL CLEAN REPORT & AUDIT ---
-        # We fetch one last time to ensure we have the absolute final text
-        messages = client.agents.messages.list(thread_id=thread.id, order="desc", limit=1)
-        messages_list = list(messages) if hasattr(messages, '__iter__') else messages.data
+        # Fetch final messages one more time to ensure we got everything
+        print("\n📊 FINAL REPORT & CITATION AUDIT")
+        print("-"*80)
         
-        if messages_list:
-            last_msg = messages_list[0]
-            if last_msg.role == MessageRole.ASSISTANT:
-                for content in getattr(last_msg, 'content', []):
-                    if getattr(content, 'type', '') == "text":
-                        text_obj = getattr(content, 'text', None)
-                        if text_obj:
-                            
-                            # AUDIT
-                            print("\n" + "-"*40)
-                            print(f"📊 FINAL SOURCE AUDIT:")
-                            unique_urls = set()
-                            annotations = getattr(text_obj, 'annotations', [])
-                            if annotations:
-                                for ann in annotations:
-                                    try:
-                                        url_citation = getattr(ann, 'url_citation', None)
-                                        if url_citation:
-                                            url = getattr(url_citation, 'url', None)
-                                            if url: unique_urls.add(url)
-                                    except:
-                                        pass
-                            
-                            for i, url in enumerate(unique_urls, 1):
-                                print(f" [{i}] {url}")
-                            
-                            print(f"\nTotal UNIQUE Sources: {len(unique_urls)}")
-                            if len(unique_urls) < 15:
-                                print(f"⚠️  Result: {len(unique_urls)} sources (Missed Target).")
-                            else:
-                                print(f"🏆 SUCCESS: {len(unique_urls)} sources found!")
+        messages = client.agents.messages.list(
+            thread_id=thread.id,
+            order="desc",  # Get most recent first
+            limit=10
+        )
+        messages_list = list(messages) if hasattr(messages, '__iter__') else getattr(messages, 'data', [])
+        
+        # Find the last assistant message (the final report)
+        final_report = None
+        for msg in messages_list:
+            if msg.role == MessageRole.ASSISTANT:
+                final_report = msg
+                break
+        
+        if final_report:
+            # Extract all citations from final report
+            final_citations = extract_citations_from_message(final_report)
+            all_citations.update(final_citations)
+            
+            # Print citation audit
+            print(f"\n📚 UNIQUE SOURCES CITED:")
+            print("-"*80)
+            sorted_urls = sorted(list(all_citations))
+            for i, url in enumerate(sorted_urls, 1):
+                print(f"  [{i:2d}] {url}")
+            
+            print(f"\n{'='*80}")
+            print(f"📈 TOTAL UNIQUE SOURCES: {len(all_citations)}")
+            
+            if len(all_citations) >= 20:
+                print(f"🏆 MISSION ACCOMPLISHED - Target exceeded!")
+            elif len(all_citations) >= 15:
+                print(f"✅ SUCCESS - Solid research base")
+            else:
+                print(f"⚠️  BELOW TARGET - Only {len(all_citations)} sources found")
+            
+            print("="*80)
+            
+        else:
+            print("⚠️  No final report found in messages")
+            
+    elif run.status == "failed":
+        print(f"❌ RUN FAILED after {duration:.1f}s")
+        if run.last_error:
+            print(f"\nError Details:")
+            print(f"  Code: {getattr(run.last_error, 'code', 'Unknown')}")
+            print(f"  Message: {getattr(run.last_error, 'message', 'Unknown')}")
     else:
-        print(f"\n❌ FAILED: {run.last_error}")
+        print(f"⚠️  RUN ENDED WITH STATUS: {run.status} (after {duration:.1f}s)")
 
+    # --- Cleanup ---
+    print(f"\n🧹 Cleaning up resources...")
     try:
         client.agents.delete_agent(agent.id)
-    except:
-        pass
+        print(f"   ✓ Agent deleted")
+    except Exception as e:
+        print(f"   ⚠️  Could not delete agent: {e}")
+
+    print(f"\n{'='*80}")
+    print(f"🏁 SESSION COMPLETE")
+    print(f"{'='*80}\n")
 
 if __name__ == "__main__":
     main()
