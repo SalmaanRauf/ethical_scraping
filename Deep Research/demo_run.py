@@ -1,7 +1,5 @@
 import os
 import time
-import json
-import logging
 from typing import Optional
 from dotenv import load_dotenv
 from azure.identity import DefaultAzureCredential
@@ -40,15 +38,15 @@ You are an expert analyst at Protiviti. Your goal is VOLUME and VERIFICATION.
 If you have fewer than 15 sources, your job is NOT done. Loop and search again.
 """
 
-# --- HELPER FUNCTION (From Video Implementation) ---
+# --- HELPER: MESSAGE POLLING (The "Portal Logic") ---
 def fetch_and_print_new_agent_response(
     client: AIProjectClient, 
     thread_id: str, 
     last_message_id: Optional[str] = None
 ) -> Optional[str]:
     """
-    Polls for NEW messages from the agent while the run is active.
-    Deep Research emits 'cot_summary' updates as messages during execution.
+    Polls the Thread for NEW messages.
+    This matches the portal behavior: The agent talks to us while it works.
     """
     try:
         # Get the latest message
@@ -68,7 +66,7 @@ def fetch_and_print_new_agent_response(
         # Only process if it's a NEW message and from the AGENT
         if latest_msg.id != last_message_id and latest_msg.role == AgentRole.AGENT:
             
-            # Print the content (This is where 'cot_summary' appears)
+            # Print the content (This is where 'cot_summary' and status updates appear)
             for content in latest_msg.content:
                 if hasattr(content, 'text'):
                     text_val = content.text.value
@@ -87,7 +85,7 @@ def fetch_and_print_new_agent_response(
     return last_message_id
 
 def main():
-    print(f"\n--- DEFENSE INTELLIGENCE TERMINAL [Deep Dive Mode] ---")
+    print(f"\n--- DEFENSE INTELLIGENCE TERMINAL [Scorched Earth x Message Polling] ---")
     
     client = AIProjectClient(
         endpoint=PROJECT_ENDPOINT,
@@ -141,15 +139,15 @@ def main():
 
     start_time = time.time()
     
-    print(f"\n🚀 MONITORING AGENT BRAIN (Real-time Updates)...\n")
+    print(f"\n🚀 MONITORING AGENT THREAD (Real-time)...\n")
 
-    # --- REPLACED: NEW MESSAGE POLLING LOOP ---
+    # --- NEW POLLING LOOP ---
     last_msg_id = None
     
     while run.status in ["queued", "in_progress", "requires_action"]:
         time.sleep(3) # Wait between checks
         
-        # 1. Check for NEW MESSAGES (The "Thinking" Updates)
+        # 1. Check for NEW MESSAGES (The "Portal" style updates)
         last_msg_id = fetch_and_print_new_agent_response(client, thread.id, last_msg_id)
         
         # 2. Refresh Run Status
@@ -161,6 +159,7 @@ def main():
         duration = time.time() - start_time
         print(f"✅ COMPLETE ({duration:.1f}s)")
         
+        # --- FINAL SOURCE AUDIT (Required for Scorched Earth) ---
         messages = client.agents.messages.list(thread_id=thread.id)
         messages_list = list(messages) if hasattr(messages, '__iter__') else messages.data
         
@@ -170,10 +169,10 @@ def main():
                     if getattr(content, 'type', '') == "text":
                         text_obj = getattr(content, 'text', None)
                         if text_obj:
-                            val = getattr(text_obj, 'value', '')
-                            print(val)
+                            # Print the final clean report
+                            print(f"\n📜 FINAL REPORT:\n{text_obj.value}")
                             
-                            # --- SOURCE AUDIT ---
+                            # AUDIT
                             print("\n" + "-"*40)
                             print(f"📊 FINAL SOURCE AUDIT:")
                             unique_urls = set()
@@ -193,7 +192,7 @@ def main():
                             
                             print(f"\nTotal UNIQUE Sources: {len(unique_urls)}")
                             if len(unique_urls) < 15:
-                                print(f"⚠️  Result: {len(unique_urls)} sources.")
+                                print(f"⚠️  Result: {len(unique_urls)} sources (Missed Target).")
                             else:
                                 print(f"🏆 SUCCESS: {len(unique_urls)} sources found!")
                 break
