@@ -1,6 +1,6 @@
 import os
 import time
-from typing import Optional
+from typing import Optional, Set
 from dotenv import load_dotenv
 from azure.identity import DefaultAzureCredential
 from azure.ai.projects import AIProjectClient
@@ -8,7 +8,7 @@ from azure.ai.agents.models import (
     DeepResearchToolDefinition,
     DeepResearchDetails,
     DeepResearchBingGroundingConnection,
-    MessageRole  # Removed 'AgentRole' - it does not exist in the public SDK
+    MessageRole
 )
 
 load_dotenv()
@@ -37,62 +37,15 @@ You are an expert analyst at Protiviti. Your goal is VOLUME and VERIFICATION.
 If you have fewer than 15 sources, your job is NOT done. Loop and search again.
 """
 
-# --- HELPER: MESSAGE POLLING (The "Portal Logic") ---
-def fetch_and_print_new_agent_response(
-    client: AIProjectClient, 
-    thread_id: str, 
-    last_message_id: Optional[str] = None
-) -> Optional[str]:
-    """
-    Polls the Thread for NEW messages.
-    This matches the portal behavior: The agent talks to us while it works.
-    """
-    try:
-        # Get the latest message
-        messages = client.agents.messages.list(
-            thread_id=thread_id,
-            limit=1,
-            order="desc"
-        )
-        
-        # Safe iteration (handle iterator vs list)
-        msg_list = list(messages) if hasattr(messages, '__iter__') else messages.data
-        if not msg_list:
-            return last_message_id
-
-        latest_msg = msg_list[0]
-
-        # FIX: Use MessageRole.ASSISTANT (or string "assistant") instead of AgentRole
-        # The agent's role in the thread is always 'assistant'
-        if latest_msg.id != last_message_id and latest_msg.role == MessageRole.ASSISTANT:
-            
-            # Print the content (This is where 'cot_summary' and status updates appear)
-            for content in latest_msg.content:
-                if hasattr(content, 'text'):
-                    text_val = content.text.value
-                    print(f"\n🧠 [AGENT UPDATE] {text_val}")
-                    
-                    # Check for explicit CoT metadata if available
-                    if hasattr(content, 'metadata') and 'cot_summary' in content.metadata:
-                        print(f"   (Thought: {content.metadata['cot_summary']})")
-            
-            return latest_msg.id
-            
-    except Exception as e:
-        # Suppress polling errors to keep terminal clean
-        pass
-    
-    return last_message_id
-
 def main():
-    print(f"\n--- DEFENSE INTELLIGENCE TERMINAL [Scorched Earth x Message Polling] ---")
+    print(f"\n--- DEFENSE INTELLIGENCE TERMINAL [Safe Pseudo-Streaming] ---")
     
     client = AIProjectClient(
         endpoint=PROJECT_ENDPOINT,
         credential=DefaultAzureCredential()
     )
 
-    # --- FIX: Fetch Connection ID dynamically ---
+    # --- Connection Setup ---
     try:
         bing_conn_obj = client.connections.get(connection_name=BING_CONNECTION)
         bing_conn_id = bing_conn_obj.id
@@ -125,8 +78,7 @@ def main():
     CONSTRAINT: 20 UNIQUE SOURCES. Verify everything.
     """
     
-    print(f"[*] Sending Prompt...")
-
+    # Create Thread & Message
     thread = client.agents.threads.create()
     client.agents.messages.create(
         thread_id=thread.id,
@@ -134,24 +86,62 @@ def main():
         content=user_query
     )
 
-    print(f"[*] Starting Run loop...")
+    print(f"[*] Starting Run (Background Mode)...")
+    # CRITICAL: We do NOT use stream() here. We use create() to run in background.
     run = client.agents.runs.create(thread_id=thread.id, agent_id=agent.id)
 
     start_time = time.time()
     
-    print(f"\n🚀 MONITORING AGENT THREAD (Real-time)...\n")
+    print(f"\n🚀 MONITORING AGENT THREAD (Safe Polling)...")
+    print("=" * 60)
 
-    # --- POLLING LOOP ---
-    last_msg_id = None
+    # --- SAFE PSEUDO-STREAMING LOGIC ---
+    printed_message_ids: Set[str] = set()
     
     while run.status in ["queued", "in_progress", "requires_action"]:
-        time.sleep(3) # Wait between checks
+        time.sleep(3) # Wait 3 seconds to avoid API throttling
         
-        # 1. Check for NEW MESSAGES (The "Portal" style updates)
-        last_msg_id = fetch_and_print_new_agent_response(client, thread.id, last_msg_id)
-        
-        # 2. Refresh Run Status
-        run = client.agents.runs.get(thread_id=thread.id, run_id=run.id)
+        try:
+            # 1. Fetch the LATEST messages (reversed so we print oldest first)
+            # We fetch up to 20 to ensure we catch bursts of updates
+            messages = client.agents.messages.list(
+                thread_id=thread.id,
+                order="asc", # Get oldest first to maintain chronological order
+                limit=50 
+            )
+            
+            # Safe list conversion
+            msg_list = list(messages) if hasattr(messages, '__iter__') else messages.data
+
+            # 2. Iterate through messages
+            for msg in msg_list:
+                # If we haven't seen this message ID yet...
+                if msg.id not in printed_message_ids:
+                    
+                    # Only print Assistant (Agent) messages
+                    if msg.role == MessageRole.ASSISTANT:
+                        
+                        # Print every text block in the new message
+                        for content in getattr(msg, 'content', []):
+                            if getattr(content, 'type', '') == "text":
+                                text_val = getattr(content, 'text', None).value
+                                if text_val:
+                                    print(f"\n🧠 [AGENT UPDATE] {text_val}")
+                                    
+                                    # Check for metadata (Thoughts)
+                                    meta = getattr(msg, 'metadata', {})
+                                    if meta and 'cot_summary' in meta:
+                                        print(f"   (Thought: {meta['cot_summary']})")
+
+                    # Mark as seen
+                    printed_message_ids.add(msg.id)
+
+            # 3. Refresh Run Status
+            run = client.agents.runs.get(thread_id=thread.id, run_id=run.id)
+            
+        except Exception as e:
+            # If a poll fails, just wait and try again. Do NOT crash.
+            pass
 
     print("\n" + "="*80)
     
@@ -159,18 +149,18 @@ def main():
         duration = time.time() - start_time
         print(f"✅ COMPLETE ({duration:.1f}s)")
         
-        # --- FINAL SOURCE AUDIT (Required for Scorched Earth) ---
-        messages = client.agents.messages.list(thread_id=thread.id)
+        # --- FINAL CLEAN REPORT & AUDIT ---
+        # We fetch one last time to ensure we have the absolute final text
+        messages = client.agents.messages.list(thread_id=thread.id, order="desc", limit=1)
         messages_list = list(messages) if hasattr(messages, '__iter__') else messages.data
         
-        for msg in messages_list:
-            if getattr(msg, 'role', '') == "assistant":
-                for content in getattr(msg, 'content', []):
+        if messages_list:
+            last_msg = messages_list[0]
+            if last_msg.role == MessageRole.ASSISTANT:
+                for content in getattr(last_msg, 'content', []):
                     if getattr(content, 'type', '') == "text":
                         text_obj = getattr(content, 'text', None)
                         if text_obj:
-                            # Print the final clean report
-                            print(f"\n📜 FINAL REPORT:\n{text_obj.value}")
                             
                             # AUDIT
                             print("\n" + "-"*40)
@@ -195,7 +185,6 @@ def main():
                                 print(f"⚠️  Result: {len(unique_urls)} sources (Missed Target).")
                             else:
                                 print(f"🏆 SUCCESS: {len(unique_urls)} sources found!")
-                break
     else:
         print(f"\n❌ FAILED: {run.last_error}")
 
