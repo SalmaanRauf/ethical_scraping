@@ -358,13 +358,18 @@ async def general_research(prompt: str, *, bing_agent, progress: Optional[Callab
     return (raw or {}).get("summary", ""), cites
 
 
-async def run_deep_research(query: str, industry: str = "general") -> Dict[str, Any]:
+async def run_deep_research(
+    query: str, 
+    industry: str = "general",
+    progress_callback = None
+) -> Dict[str, Any]:
     """
     Execute Deep Research run via Azure AI Foundry.
     
     Args:
         query: User's research question
         industry: Industry prompt to use (e.g., "defense", "financial_services", "general")
+        progress_callback: Optional callback function for real-time progress updates
     
     Returns:
         Dict with formatted Deep Research results
@@ -376,7 +381,9 @@ async def run_deep_research(query: str, industry: str = "general") -> Dict[str, 
 
     client = get_deep_research_client(industry=industry)
     logger.info(f"Got Deep Research client with industry={client._industry}")
-    report = await client.run(query)
+    
+    # Pass progress callback to client if provided
+    report = await client.run(query, progress_callback=progress_callback)
 
     def _to_citations(raw_items) -> List[Citation]:
         cites: List[Citation] = []

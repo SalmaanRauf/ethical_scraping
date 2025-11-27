@@ -770,9 +770,62 @@ async def on_message(message: cl.Message):
                 f"industry_retrieved={selected_industry}"
             )
             
-            await cl.Message(f"Performing Deep Research (Industry: {selected_industry})... this may take a moment.").send()
+            # Create a progress message that will be updated in real-time
+            progress_msg = cl.Message(
+                content=f"**Deep Research Started** (Industry: {selected_industry})\n\n"
+                        f"Status: Initializing...\n"
+                        f"Sources Found: 0"
+            )
+            await progress_msg.send()
+            
+            # Define progress callback to update the Chainlit UI in real-time
+            async def progress_callback(text: str, metadata: dict):
+                """Update progress message with latest research status (like demo_run.py)."""
+                try:
+                    citation_count = metadata.get('citation_count', 0)
+                    status = metadata.get('status', 'in_progress')
+                    activity_log = metadata.get('activity_log', [])
+                    poll_count = metadata.get('poll_count', 0)
+                    
+                    # Build progress update with activity log
+                    content = f"**Deep Research in Progress** (Industry: {selected_industry})\n\n"
+                    content += f"**Status:** {status} | **Sources Found:** {citation_count} | **Poll:** #{poll_count}\n\n"
+                    
+                    # Show activity log (recent 10 activities)
+                    if activity_log:
+                        content += "**Research Activity:**\n```\n"
+                        # Show last 10 activities to avoid message getting too long
+                        recent_activities = activity_log[-10:]
+                        for activity in recent_activities:
+                            content += f"{activity}\n"
+                        
+                        if len(activity_log) > 10:
+                            content += f"... and {len(activity_log) - 10} earlier activities\n"
+                        content += "```\n\n"
+                    
+                    # Show snippet of latest findings (first 250 chars)
+                    if text:
+                        snippet = text[:250] + "..." if len(text) > 250 else text
+                        content += f"**Latest Finding:**\n{snippet}"
+                    
+                    # Update the existing message
+                    progress_msg.content = content
+                    await progress_msg.update()
+                    
+                except Exception as e:
+                    logger.warning(f"Progress callback error: {e}")
+            
             try:
-                response = await ors.run_deep_research(user_text, industry=selected_industry)
+                response = await ors.run_deep_research(
+                    user_text, 
+                    industry=selected_industry,
+                    progress_callback=progress_callback
+                )
+                
+                # Final update
+                progress_msg.content = f"**Deep Research Complete!** (Industry: {selected_industry})\n\nFinal Report Ready"
+                await progress_msg.update()
+                
                 await present_enhanced_response(response)
                 return
             except Exception as exc:

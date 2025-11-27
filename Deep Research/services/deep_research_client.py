@@ -215,6 +215,42 @@ REMEMBER: Volume AND quality. More sources = more verification = higher confiden
             return any(keyword in role_str for keyword in agent_keywords)
         except Exception:
             return False
+    
+    def _extract_step_info(self, step) -> Optional[str]:
+        """Extract human-readable step information (like demo_run.py)."""
+        try:
+            step_type = getattr(step, 'type', None)
+            
+            if step_type == "tool_calls":
+                step_details = getattr(step, 'step_details', None)
+                if step_details:
+                    tool_calls = getattr(step_details, 'tool_calls', [])
+                    for tool_call in tool_calls:
+                        tool_type = getattr(tool_call, 'type', '')
+                        
+                        # Bing Grounding search
+                        if tool_type == 'bing_grounding':
+                            bing_grounding = getattr(tool_call, 'bing_grounding', None)
+                            if bing_grounding:
+                                query = getattr(bing_grounding, 'query', 'Unknown query')
+                                return f"[BING SEARCH] {query}"
+                        
+                        # Deep Research tool invocation
+                        elif 'deep_research' in tool_type.lower():
+                            return "[DEEP RESEARCH] Planning next research phase..."
+                        
+                        # Generic function call
+                        elif getattr(tool_call, 'function', None):
+                            func_name = getattr(tool_call.function, 'name', 'unknown')
+                            return f"[TOOL CALL] {func_name}"
+            
+            elif step_type == "message_creation":
+                return "[AGENT] Synthesizing findings..."
+            
+        except Exception as e:
+            logger.debug(f"Error extracting step info: {e}")
+        
+        return None
 
     async def run(
         self, 
@@ -281,7 +317,9 @@ REMEMBER: Volume AND quality. More sources = more verification = higher confiden
 
         # Pseudo-streaming: poll for messages while run is in progress
         printed_message_ids: Set[str] = set()
+        processed_step_ids: Set[str] = set()
         all_citations: Set[str] = set()
+        all_activity: List[str] = []  # Track all activity for display
         last_status = None
         poll_count = 0
 
@@ -296,6 +334,32 @@ REMEMBER: Volume AND quality. More sources = more verification = higher confiden
             # Show periodic progress
             if poll_count % 5 == 0:
                 logger.debug(f"Poll #{poll_count} | Messages tracked: {len(printed_message_ids)} | Citations: {len(all_citations)}")
+            
+            # Fetch and process steps (like demo_run.py)
+            try:
+                steps = self._client.agents.runs.list_steps(thread_id=thread.id, run_id=run.id)
+                
+                # Handle different response formats
+                steps_list = []
+                async for step in steps:
+                    steps_list.append(step)
+                
+                # Sort chronologically
+                sorted_steps = sorted(steps_list, key=lambda x: getattr(x, 'created_at', 0))
+                
+                for step in sorted_steps:
+                    step_id = getattr(step, 'id', None)
+                    if step_id and step_id not in processed_step_ids:
+                        # Extract step details
+                        step_info = self._extract_step_info(step)
+                        if step_info:
+                            all_activity.append(step_info)
+                            logger.info(f"Step: {step_info}")
+                        processed_step_ids.add(step_id)
+                        
+            except Exception as e:
+                # Steps API may not be available in all SDK versions
+                logger.debug(f"Could not fetch steps: {e}")
             
             try:
                 # Fetch messages (iterate directly, don't convert to list)
@@ -320,11 +384,13 @@ REMEMBER: Volume AND quality. More sources = more verification = higher confiden
                             logger.info(f"Running citation count: {len(all_citations)} sources")
                         
                         # Call progress callback if provided
-                        if progress_callback and msg_text:
+                        if progress_callback:
                             metadata = {
                                 'citation_count': len(all_citations),
                                 'status': run.status,
-                                'poll_count': poll_count
+                                'poll_count': poll_count,
+                                'activity_log': all_activity.copy(),  # Include all activity
+                                'latest_text': msg_text
                             }
                             # Extract metadata from message if available
                             msg_metadata = getattr(msg, 'metadata', {})
@@ -332,7 +398,7 @@ REMEMBER: Volume AND quality. More sources = more verification = higher confiden
                                 metadata.update(msg_metadata)
                             
                             try:
-                                progress_callback(msg_text, metadata)
+                                progress_callback(msg_text or "", metadata)
                             except Exception as e:
                                 logger.warning(f"Progress callback error: {e}")
                     
