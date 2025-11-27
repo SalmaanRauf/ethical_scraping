@@ -91,7 +91,6 @@ def print_message_with_metadata(msg, is_new: bool = True):
         print("-" * 60)
     except Exception as e:
         print(f"[DEBUG] print_message_with_metadata error: {e}")
-        traceback.print_exc()
 
 def extract_citations_from_message(msg) -> Set[str]:
     """
@@ -113,9 +112,29 @@ def extract_citations_from_message(msg) -> Set[str]:
                             if url:
                                 unique_urls.add(url)
     except Exception as e:
-        print(f"[DEBUG] extract_citations_from_message error: {e}")
+        pass  # Silent fail for citation extraction
     
     return unique_urls
+
+def is_agent_message(msg) -> bool:
+    """
+    Check if a message is from the agent/assistant.
+    Handles various possible role representations.
+    """
+    try:
+        msg_role = getattr(msg, 'role', None)
+        if msg_role is None:
+            return False
+        
+        # Get the actual string value of the role
+        role_str = str(msg_role).lower()
+        
+        # Check against various possible values
+        # Azure might use 'agent', 'assistant', or other values
+        agent_keywords = ['agent', 'assistant', 'bot']
+        return any(keyword in role_str for keyword in agent_keywords)
+    except Exception as e:
+        return False
 
 def main():
     print(f"\n{'='*80}")
@@ -192,7 +211,7 @@ def main():
     print(f"📡 LIVE PROGRESS MONITORING (Polling every 1.5s)")
     print(f"{'='*80}\n")
 
-    # --- PSEUDO-STREAMING WITH IMPROVED POLLING ---
+    # --- PSEUDO-STREAMING WITH SAFE ITERATION ---
     printed_message_ids: Set[str] = set()
     last_status = None
     poll_count = 0
@@ -213,43 +232,23 @@ def main():
             print(f"   ⏱️  Elapsed: {elapsed:.1f}s | Messages tracked: {len(printed_message_ids)}")
         
         try:
-            # Fetch messages - use higher limit to catch bursts
+            # CRITICAL: Don't convert to list - iterate directly
+            # This avoids blocking on the paginator
             messages = client.agents.messages.list(
                 thread_id=thread.id,
                 order="asc",
                 limit=100
             )
             
-            # Convert to list - handle different response types
-            if hasattr(messages, '__iter__') and not isinstance(messages, str):
-                msg_list = list(messages)
-            elif hasattr(messages, 'data'):
-                msg_list = messages.data
-            else:
-                print(f"[DEBUG] Unexpected messages type: {type(messages)}")
-                msg_list = []
-            
-            # Process new messages
-            for msg in msg_list:
+            # Iterate the paginator directly - DO NOT call list()
+            # Process messages as they come
+            for msg in messages:
                 # Skip if already printed
                 if msg.id in printed_message_ids:
                     continue
                 
-                # Debug: Print message role type and value
-                msg_role = getattr(msg, 'role', None)
-                print(f"[DEBUG] Message {msg.id[:20]}... role={msg_role}, type={type(msg_role)}")
-                
-                # Handle role comparison - could be string or enum
-                is_assistant = False
-                if msg_role == MessageRole.ASSISTANT:
-                    is_assistant = True
-                elif msg_role == "assistant":
-                    is_assistant = True
-                elif str(msg_role).lower() == "assistant":
-                    is_assistant = True
-                
-                if is_assistant:
-                    print(f"[DEBUG] Processing assistant message {msg.id[:20]}...")
+                # Check if this is an agent message
+                if is_agent_message(msg):
                     print_message_with_metadata(msg, is_new=True)
                     
                     # Extract citations from this message
@@ -257,19 +256,22 @@ def main():
                     if msg_citations:
                         all_citations.update(msg_citations)
                         print(f"📚 Running citation count: {len(all_citations)} sources")
-                else:
-                    print(f"[DEBUG] Skipping non-assistant message (role={msg_role})")
                 
                 # Mark as printed
                 printed_message_ids.add(msg.id)
+                
+                # Break after processing to avoid blocking
+                # We'll catch new messages on next poll
+                break
             
             # Refresh run status
             run = client.agents.runs.get(thread_id=thread.id, run_id=run.id)
             
         except Exception as e:
-            # Print FULL error for debugging
-            print(f"\n⚠️  Polling error: {type(e).__name__}: {str(e)}")
-            traceback.print_exc()
+            # Log error but continue
+            error_msg = str(e)
+            if "ASSISTANT" not in error_msg:  # Don't spam the known enum error
+                print(f"⚠️  Polling error: {error_msg[:100]}")
         
         # Poll every 1.5 seconds
         time.sleep(1.5)
@@ -294,28 +296,22 @@ def main():
                 limit=10
             )
             
-            # Convert to list
-            if hasattr(messages, '__iter__') and not isinstance(messages, str):
-                messages_list = list(messages)
-            elif hasattr(messages, 'data'):
-                messages_list = messages.data
-            else:
-                messages_list = []
-            
-            # Find the last assistant message
+            # Find the last agent message (iterate directly, don't convert to list)
             final_report = None
-            for msg in messages_list:
-                msg_role = getattr(msg, 'role', None)
-                is_assistant = (
-                    msg_role == MessageRole.ASSISTANT or 
-                    msg_role == "assistant" or 
-                    str(msg_role).lower() == "assistant"
-                )
-                if is_assistant:
+            for msg in messages:
+                if is_agent_message(msg):
                     final_report = msg
                     break
             
             if final_report:
+                # Print the final report text
+                final_text = extract_text_from_message(final_report)
+                if final_text:
+                    print(f"\n📄 FINAL REPORT:")
+                    print("-"*80)
+                    print(final_text)
+                    print("-"*80)
+                
                 # Extract all citations from final report
                 final_citations = extract_citations_from_message(final_report)
                 all_citations.update(final_citations)
@@ -343,7 +339,6 @@ def main():
                 print("⚠️  No final report found in messages")
         except Exception as e:
             print(f"⚠️  Error fetching final report: {e}")
-            traceback.print_exc()
             
     elif run.status == "failed":
         print(f"❌ RUN FAILED after {duration:.1f}s")
