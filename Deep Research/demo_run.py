@@ -8,8 +8,7 @@ from azure.ai.agents.models import (
     DeepResearchToolDefinition,
     DeepResearchDetails,
     DeepResearchBingGroundingConnection,
-    MessageRole,
-    AgentRole
+    MessageRole  # Removed 'AgentRole' - it does not exist in the public SDK
 )
 
 load_dotenv()
@@ -63,8 +62,9 @@ def fetch_and_print_new_agent_response(
 
         latest_msg = msg_list[0]
 
-        # Only process if it's a NEW message and from the AGENT
-        if latest_msg.id != last_message_id and latest_msg.role == AgentRole.AGENT:
+        # FIX: Use MessageRole.ASSISTANT (or string "assistant") instead of AgentRole
+        # The agent's role in the thread is always 'assistant'
+        if latest_msg.id != last_message_id and latest_msg.role == MessageRole.ASSISTANT:
             
             # Print the content (This is where 'cot_summary' and status updates appear)
             for content in latest_msg.content:
@@ -141,7 +141,7 @@ def main():
     
     print(f"\n🚀 MONITORING AGENT THREAD (Real-time)...\n")
 
-    # --- NEW POLLING LOOP ---
+    # --- POLLING LOOP ---
     last_msg_id = None
     
     while run.status in ["queued", "in_progress", "requires_action"]:
