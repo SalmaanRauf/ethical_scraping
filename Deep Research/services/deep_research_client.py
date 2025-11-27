@@ -398,7 +398,7 @@ REMEMBER: Volume AND quality. More sources = more verification = higher confiden
                                 metadata.update(msg_metadata)
                             
                             try:
-                                progress_callback(msg_text or "", metadata)
+                                await progress_callback(msg_text or "", metadata)
                             except Exception as e:
                                 logger.warning(f"Progress callback error: {e}")
                     
