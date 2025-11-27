@@ -1,5 +1,6 @@
 import os
 import time
+import traceback
 from typing import Optional, Set
 from dotenv import load_dotenv
 from azure.identity import DefaultAzureCredential
@@ -49,7 +50,8 @@ def extract_text_from_message(msg) -> Optional[str]:
         
         text_parts = []
         for content in content_items:
-            if getattr(content, 'type', '') == "text":
+            content_type = getattr(content, 'type', None)
+            if content_type == "text":
                 text_obj = getattr(content, 'text', None)
                 if text_obj:
                     text_val = getattr(text_obj, 'value', None)
@@ -58,36 +60,38 @@ def extract_text_from_message(msg) -> Optional[str]:
         
         return "\n".join(text_parts) if text_parts else None
     except Exception as e:
+        print(f"[DEBUG] extract_text_from_message error: {e}")
         return None
 
 def print_message_with_metadata(msg, is_new: bool = True):
     """
     Print a message with proper formatting and metadata.
     """
-    text = extract_text_from_message(msg)
-    if not text:
-        return
-    
-    # Determine message type
-    prefix = "🧠 [NEW UPDATE]" if is_new else "📄 [MESSAGE]"
-    
-    # Print main content
-    print(f"\n{prefix}")
-    print("-" * 60)
-    print(text)
-    
-    # Print metadata if available (Chain of Thought summaries)
     try:
+        text = extract_text_from_message(msg)
+        if not text:
+            return
+        
+        # Determine message type
+        prefix = "🧠 [NEW UPDATE]" if is_new else "📄 [MESSAGE]"
+        
+        # Print main content
+        print(f"\n{prefix}")
+        print("-" * 60)
+        print(text)
+        
+        # Print metadata if available (Chain of Thought summaries)
         metadata = getattr(msg, 'metadata', {})
         if metadata:
             if 'cot_summary' in metadata:
                 print(f"\n💭 Thought Process: {metadata['cot_summary']}")
             if 'reasoning' in metadata:
                 print(f"🔍 Reasoning: {metadata['reasoning']}")
-    except:
-        pass
-    
-    print("-" * 60)
+        
+        print("-" * 60)
+    except Exception as e:
+        print(f"[DEBUG] print_message_with_metadata error: {e}")
+        traceback.print_exc()
 
 def extract_citations_from_message(msg) -> Set[str]:
     """
@@ -97,21 +101,19 @@ def extract_citations_from_message(msg) -> Set[str]:
     try:
         content_items = getattr(msg, 'content', [])
         for content in content_items:
-            if getattr(content, 'type', '') == "text":
+            content_type = getattr(content, 'type', None)
+            if content_type == "text":
                 text_obj = getattr(content, 'text', None)
                 if text_obj:
                     annotations = getattr(text_obj, 'annotations', [])
                     for ann in annotations:
-                        try:
-                            url_citation = getattr(ann, 'url_citation', None)
-                            if url_citation:
-                                url = getattr(url_citation, 'url', None)
-                                if url:
-                                    unique_urls.add(url)
-                        except:
-                            continue
-    except:
-        pass
+                        url_citation = getattr(ann, 'url_citation', None)
+                        if url_citation:
+                            url = getattr(url_citation, 'url', None)
+                            if url:
+                                unique_urls.add(url)
+    except Exception as e:
+        print(f"[DEBUG] extract_citations_from_message error: {e}")
     
     return unique_urls
 
@@ -212,45 +214,64 @@ def main():
         
         try:
             # Fetch messages - use higher limit to catch bursts
-            # Order by asc to process chronologically
             messages = client.agents.messages.list(
                 thread_id=thread.id,
                 order="asc",
-                limit=100  # Increased to catch all messages
+                limit=100
             )
             
-            # Convert to list safely
-            msg_list = list(messages) if hasattr(messages, '__iter__') else getattr(messages, 'data', [])
+            # Convert to list - handle different response types
+            if hasattr(messages, '__iter__') and not isinstance(messages, str):
+                msg_list = list(messages)
+            elif hasattr(messages, 'data'):
+                msg_list = messages.data
+            else:
+                print(f"[DEBUG] Unexpected messages type: {type(messages)}")
+                msg_list = []
             
             # Process new messages
-            new_messages_found = False
             for msg in msg_list:
                 # Skip if already printed
                 if msg.id in printed_message_ids:
                     continue
                 
-                # Only process ASSISTANT messages (skip user messages)
-                if msg.role == MessageRole.ASSISTANT:
+                # Debug: Print message role type and value
+                msg_role = getattr(msg, 'role', None)
+                print(f"[DEBUG] Message {msg.id[:20]}... role={msg_role}, type={type(msg_role)}")
+                
+                # Handle role comparison - could be string or enum
+                is_assistant = False
+                if msg_role == MessageRole.ASSISTANT:
+                    is_assistant = True
+                elif msg_role == "assistant":
+                    is_assistant = True
+                elif str(msg_role).lower() == "assistant":
+                    is_assistant = True
+                
+                if is_assistant:
+                    print(f"[DEBUG] Processing assistant message {msg.id[:20]}...")
                     print_message_with_metadata(msg, is_new=True)
-                    new_messages_found = True
                     
                     # Extract citations from this message
                     msg_citations = extract_citations_from_message(msg)
                     if msg_citations:
                         all_citations.update(msg_citations)
                         print(f"📚 Running citation count: {len(all_citations)} sources")
+                else:
+                    print(f"[DEBUG] Skipping non-assistant message (role={msg_role})")
                 
-                # Mark as printed (even user messages to avoid reprocessing)
+                # Mark as printed
                 printed_message_ids.add(msg.id)
             
             # Refresh run status
             run = client.agents.runs.get(thread_id=thread.id, run_id=run.id)
             
         except Exception as e:
-            # Silently handle polling errors and continue
-            print(f"⚠️  Polling error (will retry): {str(e)[:100]}")
+            # Print FULL error for debugging
+            print(f"\n⚠️  Polling error: {type(e).__name__}: {str(e)}")
+            traceback.print_exc()
         
-        # Poll every 1.5 seconds (good balance for responsiveness)
+        # Poll every 1.5 seconds
         time.sleep(1.5)
 
     # --- COMPLETION HANDLING ---
@@ -262,54 +283,71 @@ def main():
         print(f"✅ RESEARCH COMPLETED in {duration:.1f}s ({poll_count} polls)")
         print("="*80)
         
-        # Fetch final messages one more time to ensure we got everything
+        # Fetch final messages one more time
         print("\n📊 FINAL REPORT & CITATION AUDIT")
         print("-"*80)
         
-        messages = client.agents.messages.list(
-            thread_id=thread.id,
-            order="desc",  # Get most recent first
-            limit=10
-        )
-        messages_list = list(messages) if hasattr(messages, '__iter__') else getattr(messages, 'data', [])
-        
-        # Find the last assistant message (the final report)
-        final_report = None
-        for msg in messages_list:
-            if msg.role == MessageRole.ASSISTANT:
-                final_report = msg
-                break
-        
-        if final_report:
-            # Extract all citations from final report
-            final_citations = extract_citations_from_message(final_report)
-            all_citations.update(final_citations)
+        try:
+            messages = client.agents.messages.list(
+                thread_id=thread.id,
+                order="desc",
+                limit=10
+            )
             
-            # Print citation audit
-            print(f"\n📚 UNIQUE SOURCES CITED:")
-            print("-"*80)
-            sorted_urls = sorted(list(all_citations))
-            for i, url in enumerate(sorted_urls, 1):
-                print(f"  [{i:2d}] {url}")
-            
-            print(f"\n{'='*80}")
-            print(f"📈 TOTAL UNIQUE SOURCES: {len(all_citations)}")
-            
-            if len(all_citations) >= 20:
-                print(f"🏆 MISSION ACCOMPLISHED - Target exceeded!")
-            elif len(all_citations) >= 15:
-                print(f"✅ SUCCESS - Solid research base")
+            # Convert to list
+            if hasattr(messages, '__iter__') and not isinstance(messages, str):
+                messages_list = list(messages)
+            elif hasattr(messages, 'data'):
+                messages_list = messages.data
             else:
-                print(f"⚠️  BELOW TARGET - Only {len(all_citations)} sources found")
+                messages_list = []
             
-            print("="*80)
+            # Find the last assistant message
+            final_report = None
+            for msg in messages_list:
+                msg_role = getattr(msg, 'role', None)
+                is_assistant = (
+                    msg_role == MessageRole.ASSISTANT or 
+                    msg_role == "assistant" or 
+                    str(msg_role).lower() == "assistant"
+                )
+                if is_assistant:
+                    final_report = msg
+                    break
             
-        else:
-            print("⚠️  No final report found in messages")
+            if final_report:
+                # Extract all citations from final report
+                final_citations = extract_citations_from_message(final_report)
+                all_citations.update(final_citations)
+                
+                # Print citation audit
+                print(f"\n📚 UNIQUE SOURCES CITED:")
+                print("-"*80)
+                sorted_urls = sorted(list(all_citations))
+                for i, url in enumerate(sorted_urls, 1):
+                    print(f"  [{i:2d}] {url}")
+                
+                print(f"\n{'='*80}")
+                print(f"📈 TOTAL UNIQUE SOURCES: {len(all_citations)}")
+                
+                if len(all_citations) >= 20:
+                    print(f"🏆 MISSION ACCOMPLISHED - Target exceeded!")
+                elif len(all_citations) >= 15:
+                    print(f"✅ SUCCESS - Solid research base")
+                else:
+                    print(f"⚠️  BELOW TARGET - Only {len(all_citations)} sources found")
+                
+                print("="*80)
+                
+            else:
+                print("⚠️  No final report found in messages")
+        except Exception as e:
+            print(f"⚠️  Error fetching final report: {e}")
+            traceback.print_exc()
             
     elif run.status == "failed":
         print(f"❌ RUN FAILED after {duration:.1f}s")
-        if run.last_error:
+        if hasattr(run, 'last_error') and run.last_error:
             print(f"\nError Details:")
             print(f"  Code: {getattr(run.last_error, 'code', 'Unknown')}")
             print(f"  Message: {getattr(run.last_error, 'message', 'Unknown')}")
