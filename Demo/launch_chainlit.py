@@ -6,14 +6,22 @@ This is a simulation for video demo purposes - no real backend required.
 
 import os
 import sys
+import webbrowser
+import threading
+import time
 from pathlib import Path
+
+def open_browser():
+    """Open browser after a short delay to let server start."""
+    time.sleep(2)  # Wait for server to start
+    webbrowser.open("http://localhost:8000")
 
 def main():
     """Main launch function."""
     print("🚀 Launching Protiviti Account Research Demo...")
     print("=" * 60)
     print("\n🌐 Starting Chainlit application...")
-    print("📱 Access the application at: http://localhost:8000")
+    print("📱 Opening browser at: http://localhost:8000")
     print("🛑 Press Ctrl+C to stop the application")
     print("=" * 60)
     
@@ -32,10 +40,14 @@ def main():
         env = os.environ.copy()
         env['PYTHONPATH'] = f"{script_dir}:{env.get('PYTHONPATH', '')}"
         
-        # Run chainlit directly
+        # Start browser opener in background thread
+        browser_thread = threading.Thread(target=open_browser, daemon=True)
+        browser_thread.start()
+        
+        # Run chainlit on localhost
         result = subprocess.run([
             sys.executable, "-m", "chainlit", "run", "main.py", 
-            "--host", "0.0.0.0", "--port", "8000"
+            "--host", "localhost", "--port", "8000"
         ], cwd=str(chainlit_app_dir), env=env)
         
         if result.returncode != 0:
@@ -50,4 +62,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
