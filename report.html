@@ -9,6 +9,7 @@
             --primary: #2c3e50;
             --accent: #c0392b; /* Protiviti-ish Red */
             --highlight: #2980b9;
+            --tech: #8e44ad; /* Purple for Agent Tech */
             --bg-light: #f4f6f7;
             --text-dark: #333;
             --text-light: #7f8c8d;
@@ -59,7 +60,7 @@
         .exec-summary {
             background: white;
             padding: 30px;
-            border-bottom: 4px solid var(--accent);
+            border-bottom: 1px solid #eee;
         }
 
         .exec-title {
@@ -77,6 +78,59 @@
             padding: 15px;
             margin-top: 20px;
             color: #8e2b21;
+        }
+
+        /* Agent System Dashboard */
+        .agent-dashboard {
+            background: #fdfbff; /* Slight purple tint */
+            padding: 20px 30px;
+            border-bottom: 4px solid var(--tech);
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+        
+        .agent-card {
+            border: 1px solid #e1dbe6;
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            position: relative;
+        }
+        
+        .agent-icon {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            font-size: 20px;
+            opacity: 0.2;
+        }
+
+        .agent-name {
+            font-weight: bold;
+            color: var(--tech);
+            font-size: 14px;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+
+        .agent-stat {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+            display: block;
+        }
+
+        .agent-tag {
+            font-size: 10px;
+            text-transform: uppercase;
+            padding: 2px 6px;
+            border-radius: 3px;
+            background: #f0e6f5;
+            color: var(--tech);
+            font-weight: bold;
+            margin-left: 8px;
+            vertical-align: middle;
         }
 
         /* Grid Layout */
@@ -194,6 +248,7 @@
 
         @media (max-width: 768px) {
             .grid-2 { grid-template-columns: 1fr; }
+            .agent-dashboard { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -203,12 +258,36 @@
     <header>
         <div class="header-left">
             <h1>📊 Account Intelligence Report: Holywudronez</h1>
-            <p>Source: ProConnect Account Planning System | v2.3</p>
+            <p>Source: ProConnect Multi-Agent System | v2.3</p>
         </div>
         <div class="header-right">
-            <span class="badge">Confidence Score: 92%</span>
+            <span class="badge">System Confidence: 92%</span>
         </div>
     </header>
+
+    <div class="agent-dashboard">
+        <div class="agent-card">
+            <div class="agent-name">🌐 Web Agent</div>
+            <div class="agent-icon">📡</div>
+            <div class="agent-stat"><strong>Task:</strong> Market Scanning</div>
+            <div class="agent-stat"><strong>Performance:</strong> 14,200 sources / 0.8s</div>
+            <div class="agent-stat"><strong>Key Find:</strong> FAA Inquiry + 18% Drop</div>
+        </div>
+        <div class="agent-card">
+            <div class="agent-name">🔐 Credentials Agent</div>
+            <div class="agent-icon">📂</div>
+            <div class="agent-stat"><strong>Task:</strong> Internal Asset Match</div>
+            <div class="agent-stat"><strong>Performance:</strong> 500+ Case Studies Filtered</div>
+            <div class="agent-stat"><strong>Key Find:</strong> Aerospace QC (87% Match)</div>
+        </div>
+        <div class="agent-card">
+            <div class="agent-name">⚙️ Tech Enabler Agent</div>
+            <div class="agent-icon">🔌</div>
+            <div class="agent-stat"><strong>Task:</strong> Solution Architecture</div>
+            <div class="agent-stat"><strong>Performance:</strong> 91% Solution Fit Score</div>
+            <div class="agent-stat"><strong>Key Find:</strong> Predictive Quality Platform</div>
+        </div>
+    </div>
 
     <div class="exec-summary">
         <div class="exec-title">Executive Summary</div>
@@ -223,7 +302,7 @@
 
     <div class="grid-2">
         <div class="col bg-light">
-            <h2>🔍 External Market Signals</h2>
+            <h2>🔍 External Signals <span class="agent-tag">VIA WEB AGENT</span></h2>
             
             <div class="metric-card">
                 <strong>📉 Financial Pressure</strong><br>
@@ -247,10 +326,10 @@
         </div>
 
         <div class="col">
-            <h2>🏢 Internal Assets (91% Match)</h2>
+            <h2>🏢 Internal Assets <span class="agent-tag">VIA CREDENTIALS AGENT</span></h2>
             
             <div style="margin-bottom: 20px;">
-                <strong>Relevant Credentials</strong>
+                <strong>Relevant Credentials (Top 3 Matches)</strong>
                 <ul>
                     <li>Aerospace QC Program (87% defect improvement)</li>
                     <li>Automotive Recall Assessment (65% cost reduction)</li>
@@ -258,8 +337,9 @@
                 </ul>
             </div>
 
-            <strong>Proven Solution: Predictive Quality Platform</strong>
-            <p style="font-size: 14px; color: #555;">Built for aerospace client with similar defects.</p>
+            <strong>Proposed Solution: Predictive Quality Platform</strong><br>
+            <span style="font-size: 11px; color: var(--tech); font-weight: bold;">⚡ SELECTED BY TECH ENABLER AGENT</span>
+            <p style="font-size: 14px; color: #555; margin-top: 5px;">Built for aerospace client with similar defects.</p>
             <div style="display: flex; gap: 10px; font-size: 13px;">
                 <span style="background: #e1f5fe; color: #0277bd; padding: 5px 10px; border-radius: 4px;">76% Defect Reduction</span>
                 <span style="background: #e8f5e9; color: #2e7d32; padding: 5px 10px; border-radius: 4px;">15% Stock Recovery</span>
