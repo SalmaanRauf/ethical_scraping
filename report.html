@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Intelligence Report: Holywudronez</title>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --accent: #c0392b; /* Protiviti-ish Red */
+            --highlight: #2980b9;
+            --bg-light: #f4f6f7;
+            --text-dark: #333;
+            --text-light: #7f8c8d;
+            --card-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--text-dark);
+            background-color: #eef2f5;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        /* Header */
+        header {
+            background: var(--primary);
+            color: white;
+            padding: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-left h1 { margin: 0; font-size: 24px; font-weight: 600; }
+        .header-left p { margin: 5px 0 0; opacity: 0.8; font-size: 14px; }
+        
+        .badge {
+            background: rgba(255,255,255,0.2);
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 14px;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+
+        /* Executive Summary */
+        .exec-summary {
+            background: white;
+            padding: 30px;
+            border-bottom: 4px solid var(--accent);
+        }
+
+        .exec-title {
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .opportunity-box {
+            background: #fff3f2;
+            border-left: 4px solid var(--accent);
+            padding: 15px;
+            margin-top: 20px;
+            color: #8e2b21;
+        }
+
+        /* Grid Layout */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0;
+        }
+
+        .col {
+            padding: 30px;
+        }
+
+        .bg-light { background-color: var(--bg-light); }
+
+        h2 {
+            font-size: 18px;
+            color: var(--primary);
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 10px;
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        ul { padding-left: 20px; }
+        li { margin-bottom: 8px; }
+
+        /* Metrics Cards */
+        .metric-card {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-bottom: 10px;
+        }
+        .metric-card strong { color: var(--accent); }
+
+        /* Timeline / Roadmap */
+        .timeline-section {
+            padding: 30px;
+        }
+        .timeline {
+            position: relative;
+            padding-left: 20px;
+            border-left: 2px solid #ddd;
+        }
+        .timeline-item {
+            margin-bottom: 25px;
+            position: relative;
+        }
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -26px;
+            top: 5px;
+            width: 10px;
+            height: 10px;
+            background: var(--highlight);
+            border-radius: 50%;
+            border: 2px solid white;
+        }
+        .timeline-phase {
+            font-weight: bold;
+            color: var(--highlight);
+            text-transform: uppercase;
+            font-size: 12px;
+        }
+
+        /* Financials */
+        .financial-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .fin-card {
+            background: var(--primary);
+            color: white;
+            padding: 20px;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .fin-val { font-size: 24px; font-weight: bold; margin: 10px 0; }
+        .fin-label { font-size: 12px; opacity: 0.8; }
+
+        /* Recommendation Footer */
+        .recommendation {
+            background: var(--primary);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .rec-action {
+            background: var(--accent);
+            color: white;
+            padding: 12px 30px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: bold;
+            display: inline-block;
+            margin-top: 15px;
+        }
+        .rec-stars { color: #f1c40f; font-size: 20px; letter-spacing: 5px; }
+
+        /* Footer */
+        .footer-meta {
+            background: #22313f;
+            color: #7f8c8d;
+            font-size: 11px;
+            text-align: center;
+            padding: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .grid-2 { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <div class="header-left">
+            <h1>📊 Account Intelligence Report: Holywudronez</h1>
+            <p>Source: ProConnect Account Planning System | v2.3</p>
+        </div>
+        <div class="header-right">
+            <span class="badge">Confidence Score: 92%</span>
+        </div>
+    </header>
+
+    <div class="exec-summary">
+        <div class="exec-title">Executive Summary</div>
+        <p style="font-size: 18px; margin: 0;">
+            Our multi-agent analysis reveals significant operational challenges creating immediate consulting opportunities. With an <strong>18% stock decline</strong> and FAA inquiry underway, we have a <strong>60-90 day window</strong> to position Protiviti as their strategic partner.
+        </p>
+        <div class="opportunity-box">
+            <strong>💰 Opportunity Range: $5-8M</strong><br>
+            Targeting quality control, regulatory compliance, and risk management services.
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <div class="col bg-light">
+            <h2>🔍 External Market Signals</h2>
+            
+            <div class="metric-card">
+                <strong>📉 Financial Pressure</strong><br>
+                Stock down 18% QTD as crash reports increase alongside 300% production scaling.
+            </div>
+
+            <div class="metric-card">
+                <strong>🚨 Manufacturing Crisis</strong><br>
+                17 reported drone crashes in 6 months linked to specific component defects.
+            </div>
+
+            <div class="metric-card">
+                <strong>🏛️ Regulatory Risk</strong><br>
+                FAA Category 3 investigation initiated.
+            </div>
+
+            <div class="metric-card">
+                <strong>🛒 Procurement Activity</strong><br>
+                New RFQ posted for Quality Control ($3-5M) with a 60-day response window.
+            </div>
+        </div>
+
+        <div class="col">
+            <h2>🏢 Internal Assets (91% Match)</h2>
+            
+            <div style="margin-bottom: 20px;">
+                <strong>Relevant Credentials</strong>
+                <ul>
+                    <li>Aerospace QC Program (87% defect improvement)</li>
+                    <li>Automotive Recall Assessment (65% cost reduction)</li>
+                    <li>UAV Regulatory Framework (9-month acceleration)</li>
+                </ul>
+            </div>
+
+            <strong>Proven Solution: Predictive Quality Platform</strong>
+            <p style="font-size: 14px; color: #555;">Built for aerospace client with similar defects.</p>
+            <div style="display: flex; gap: 10px; font-size: 13px;">
+                <span style="background: #e1f5fe; color: #0277bd; padding: 5px 10px; border-radius: 4px;">76% Defect Reduction</span>
+                <span style="background: #e8f5e9; color: #2e7d32; padding: 5px 10px; border-radius: 4px;">15% Stock Recovery</span>
+            </div>
+        </div>
+    </div>
+
+    <div style="padding: 30px; background: white; border-top: 1px solid #eee;">
+        <h2>💡 Strategic Insights</h2>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div>
+                <strong>1. Urgency Creates Opportunity</strong>
+                <p style="font-size: 14px; margin-top: 5px;">The 18% stock decline puts executives under extreme pressure to act.</p>
+            </div>
+            <div>
+                <strong>2. Perfect Timing</strong>
+                <p style="font-size: 14px; margin-top: 5px;">New RFQ aligns with immediate needs and our proven capabilities.</p>
+            </div>
+            <div>
+                <strong>3. Systemic Issue</strong>
+                <p style="font-size: 14px; margin-top: 5px;">This isn't new—it's been building for 12+ months.</p>
+            </div>
+            <div>
+                <strong>4. Competitive Advantage</strong>
+                <p style="font-size: 14px; margin-top: 5px;">Our aerospace experience gives us unique credibility over generalists.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <div class="timeline-section bg-light">
+            <h2>🚀 Action Plan</h2>
+            <div class="timeline">
+                <div class="timeline-item">
+                    <div class="timeline-phase">Week 1 (Immediate)</div>
+                    <div><strong>Assign BD Lead & Prepare RFQ</strong><br>Customize QC proposal using Aerospace credentials.</div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-phase">Week 2-4 (Short Term)</div>
+                    <div><strong>Executive Briefing</strong><br>Showcase Predictive Quality Platform demo.</div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-phase">Month 2-3 (Medium Term)</div>
+                    <div><strong>Site Assessment</strong><br>Conduct manufacturing facility review.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col">
+            <h2>📈 Pipeline & Projections</h2>
+            
+            <div class="financial-grid">
+                <div class="fin-card">
+                    <div class="fin-label">Total Pipeline</div>
+                    <div class="fin-val">$9-16M</div>
+                </div>
+                <div class="fin-card" style="background: var(--highlight);">
+                    <div class="fin-label">Weighted Value</div>
+                    <div class="fin-val">$11.8M</div>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <strong>Immediate Opportunities:</strong>
+                <ul style="font-size: 14px; margin-top: 10px;">
+                    <li>QC Assessment ($1.5-2.5M) <span style="color:green; font-weight:bold;">75% Win Prob</span></li>
+                    <li>Reg Compliance ($2-3M) <span style="color:green; font-weight:bold;">70% Win Prob</span></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div style="padding: 30px; background: white; border-top: 1px solid #ddd;">
+        <h2>👥 Key Stakeholders Strategy</h2>
+        <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+            <div style="flex: 1; min-width: 200px; background: #f9f9f9; padding: 15px; border-radius: 4px;">
+                <strong>CFO</strong>
+                <p style="font-size: 12px; margin: 5px 0;">Focus on ROI & Stock Recovery</p>
+            </div>
+            <div style="flex: 1; min-width: 200px; background: #f9f9f9; padding: 15px; border-radius: 4px;">
+                <strong>Head of Manufacturing</strong>
+                <p style="font-size: 12px; margin: 5px 0;">Focus on QC Pain Points</p>
+            </div>
+            <div style="flex: 1; min-width: 200px; background: #f9f9f9; padding: 15px; border-radius: 4px;">
+                <strong>General Counsel</strong>
+                <p style="font-size: 12px; margin: 5px 0;">Focus on FAA Compliance</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="recommendation">
+        <div class="rec-stars">⭐⭐⭐⭐⭐</div>
+        <h2 style="color: white; border: none; justify-content: center;">PURSUIT PRIORITY: HIGH</h2>
+        <p>The convergence of stock pressure, regulatory scrutiny, and active procurement creates a high-probability engagement window.</p>
+        <br>
+        <a href="#" class="rec-action">NEXT STEP: Schedule Briefing (48 Hrs)</a>
+    </div>
+
+    <div class="footer-meta">
+        Generated by Protiviti Account Intelligence Platform | v2.3 | Confidential
+    </div>
+</div>
+
+</body>
+</html>
