@@ -29,11 +29,13 @@ from services.enhanced_router import enhanced_router
 from tools.task_executor import task_executor
 from tools.response_formatter import response_formatter
 from services.company_profiles import load_company_profiles
+from services.prompt_generator import get_prompt_generator, ResearchParameters
 
 setup_logging(level=logging.INFO)
 logger = logging.getLogger(__name__)
 DEEP_RESEARCH_SESSION_KEY = "deep_research_mode"
 INDUSTRY_PROMPT_SESSION_KEY = "industry_prompt"
+RESEARCH_PARAMS_SESSION_KEY = "research_params"
 DEFAULT_MODE = "standard"
 DEFAULT_INDUSTRY = "general"
 
@@ -695,38 +697,165 @@ async def update_mode(action: cl.Action):
 
 @cl.action_callback("set_industry")
 async def update_industry(action: cl.Action):
-    """Handle industry prompt selection."""
+    """Handle industry prompt selection and show parameter form."""
     try:
-        # In Chainlit 2.6, Action only has .name and .payload (no .value)
         selected_industry = (action.payload or {}).get("industry", DEFAULT_INDUSTRY)
         session_id = cl.user_session.get("session_id")
         
-        logger.info(
-            f"Industry selected: {selected_industry} (session={session_id})"
-        )
-        
+        logger.info(f"Industry selected: {selected_industry} (session={session_id})")
         cl.user_session.set(INDUSTRY_PROMPT_SESSION_KEY, selected_industry)
         
-        # Get metadata for confirmation
+        # Initialize research params in session
+        cl.user_session.set(RESEARCH_PARAMS_SESSION_KEY, {
+            "sector": selected_industry,
+            "company": "",
+            "signals": "",
+            "service_lines": "",
+            "geography": "",
+            "min_value": "",
+            "time_window": ""
+        })
+        
+        # Get metadata for display
         from services.prompt_loader import PromptLoader
         loader = PromptLoader()
         try:
             meta = loader.get_prompt_metadata(selected_industry)
-            await cl.Message(
-                f"Industry focus selected: **{meta['display_name']}** (v{meta['version']})\n\n"
-                f"Optimized for: {meta['description']}\n\n"
-                f"You can now ask your research question in the chat."
-            ).send()
-        except Exception as e:
-            logger.error(f"Failed to load industry metadata: {e}")
-            await cl.Message(
-            f"Industry focus selected: **{selected_industry}**\n\n"
-            f"You can now ask your research question in the chat."
-        ).send()
+            industry_display = f"{meta['display_name']} (v{meta['version']})"
+        except Exception:
+            industry_display = selected_industry.replace("_", " ").title()
+        
+        # Show parameter collection form
+        await show_parameter_form(industry_display, selected_industry)
     
     except Exception as e:
         logger.exception(f"Error in update_industry callback: {e}")
-        await cl.Message(f"Error selecting industry. Using default (general).").send()
+        await cl.Message("Error selecting industry. Using default (general).").send()
+
+
+async def show_parameter_form(industry_display: str, sector: str):
+    """Show the research parameter collection form."""
+    form_message = f"""**Step 3: Research Parameters**
+
+✓ Industry: **{industry_display}**
+
+Please provide the following information. Leave blank for any fields you don't need.
+
+**Company or Topic:** (e.g., Lockheed Martin, cloud security trends)
+**Signals to Detect:** (e.g., CMMC, IV&V, Consent Order)
+**Service Lines:** (e.g., Model Validation, Cybersecurity Compliance)
+**Geography:** (e.g., CONUS, EMEA, Global)
+**Min Value USD:** (e.g., 10M, 100M)
+**Time Window:** (e.g., Last 90 days, Last year)
+
+Type your responses in the chat using this format:
+```
+Company: [your input]
+Signals: [your input]
+Service Lines: [your input]
+Geography: [your input]
+Min Value: [your input]
+Time Window: [your input]
+```
+
+Or type each field one at a time. When ready, click **Generate Prompt**."""
+    
+    actions = [
+        cl.Action(
+            name="generate_prompt",
+            label="🚀 Generate Prompt",
+            payload={"sector": sector}
+        ),
+        cl.Action(
+            name="skip_params",
+            label="Skip (use defaults)",
+            payload={"sector": sector}
+        )
+    ]
+    
+    await cl.Message(content=form_message, actions=actions).send()
+
+
+@cl.action_callback("generate_prompt")
+async def handle_generate_prompt(action: cl.Action):
+    """Generate research prompt from collected parameters."""
+    try:
+        sector = (action.payload or {}).get("sector", DEFAULT_INDUSTRY)
+        params_dict = cl.user_session.get(RESEARCH_PARAMS_SESSION_KEY, {})
+        
+        # Create ResearchParameters
+        params = ResearchParameters(
+            sector=params_dict.get("sector", sector),
+            company=params_dict.get("company", ""),
+            signals=params_dict.get("signals", ""),
+            service_lines=params_dict.get("service_lines", ""),
+            geography=params_dict.get("geography", ""),
+            min_value=params_dict.get("min_value", ""),
+            time_window=params_dict.get("time_window", "")
+        )
+        
+        # Get prompt generator and analyst agent
+        analyst_agent = cl.user_session.get("analyst_agent")
+        if not analyst_agent:
+            await cl.Message("❌ Error: Analyst agent not initialized. Please refresh.").send()
+            return
+        
+        prompt_gen = get_prompt_generator()
+        await prompt_gen.ensure_kernel_ready(analyst_agent)
+        
+        # Generate the prompt
+        await cl.Message("⏳ Generating research prompt...").send()
+        generated_prompt = await prompt_gen.generate(params)
+        
+        # Show generated prompt for user to edit and submit
+        await cl.Message(
+            f"""✅ **Generated Prompt:**
+
+```
+{generated_prompt}
+```
+
+**Copy this prompt**, paste it in the chat input below, edit if needed, and press Enter to start the research."""
+        ).send()
+        
+        logger.info(f"Generated prompt for sector={sector}")
+        
+    except Exception as e:
+        logger.exception(f"Error generating prompt: {e}")
+        await cl.Message(f"❌ Error generating prompt: {str(e)}").send()
+
+
+@cl.action_callback("skip_params")
+async def handle_skip_params(action: cl.Action):
+    """Skip parameter form and proceed with defaults."""
+    sector = (action.payload or {}).get("sector", DEFAULT_INDUSTRY)
+    await cl.Message(
+        f"✓ Using defaults for **{sector.replace('_', ' ').title()}** sector.\n\n"
+        f"You can now type your research question directly in the chat."
+    ).send()
+
+
+def parse_research_params(text: str) -> dict:
+    """Parse research parameters from user input."""
+    import re
+    params = {}
+    
+    # Match patterns like "Company: value" or "Signals: value1, value2"
+    patterns = {
+        "company": r"(?:company|topic)[:\s]+(.+?)(?:\n|$)",
+        "signals": r"signals?[:\s]+(.+?)(?:\n|$)",
+        "service_lines": r"service\s*lines?[:\s]+(.+?)(?:\n|$)",
+        "geography": r"geography[:\s]+(.+?)(?:\n|$)",
+        "min_value": r"min(?:imum)?\s*value[:\s]+(.+?)(?:\n|$)",
+        "time_window": r"time\s*window[:\s]+(.+?)(?:\n|$)"
+    }
+    
+    for key, pattern in patterns.items():
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            params[key] = match.group(1).strip()
+    
+    return params
 
 
 @cl.on_message
@@ -750,9 +879,23 @@ async def on_message(message: cl.Message):
             await cl.Message("Please enter a message.").send()
             return
 
+        # Check if this is parameter input (contains parameter keywords)
+        current_mode = cl.user_session.get(DEEP_RESEARCH_SESSION_KEY, DEFAULT_MODE)
+        if current_mode == "deep":
+            parsed_params = parse_research_params(user_text)
+            if parsed_params:
+                # Update session params
+                existing_params = cl.user_session.get(RESEARCH_PARAMS_SESSION_KEY, {})
+                existing_params.update(parsed_params)
+                cl.user_session.set(RESEARCH_PARAMS_SESSION_KEY, existing_params)
+                
+                # Confirm what was captured
+                captured = ", ".join(f"{k}={v}" for k, v in parsed_params.items())
+                await cl.Message(f"✓ Parameters captured: {captured}\n\nClick **Generate Prompt** when ready, or add more parameters.").send()
+                return
+
         ctx.add_message("user", user_text)
 
-        current_mode = cl.user_session.get(DEEP_RESEARCH_SESSION_KEY, DEFAULT_MODE)
         logger.info(
             "Deep research mode check session=%s mode=%s feature_flag=%s",
             cl.user_session.get("session_id"),
