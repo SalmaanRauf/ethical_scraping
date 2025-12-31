@@ -27,6 +27,7 @@ class ResearchParameters:
     geography: str = ""
     min_value: str = ""
     time_window: str = ""
+    other_context: str = ""
     
     def to_dict(self) -> dict:
         return asdict(self)
@@ -98,7 +99,8 @@ class PromptGenerator:
                 service_lines=params.service_lines or "N/A",
                 geography=params.geography or "N/A",
                 min_value=params.min_value or "N/A",
-                time_window=params.time_window or "N/A"
+                time_window=params.time_window or "N/A",
+                other_context=params.other_context or "N/A"
             )
             
             result = await self.kernel.invoke(
@@ -149,6 +151,10 @@ class PromptGenerator:
         # Service lines
         if params.service_lines and params.service_lines.lower() != "n/a":
             parts.append(f"Prioritize {params.service_lines} service line opportunities.")
+        
+        # Other context
+        if params.other_context and params.other_context.lower() != "n/a":
+            parts.append(f"Additional context: {params.other_context}")
         
         return " ".join(parts)
 
