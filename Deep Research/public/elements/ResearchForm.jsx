@@ -150,7 +150,7 @@ export default function ResearchForm() {
                     Cancel
                 </Button>
                 <Button onClick={() => submitElement(values)}>
-                    🚀 Generate & Run Research
+                    🚀 Generate Prompt
                 </Button>
             </CardFooter>
         </Card>

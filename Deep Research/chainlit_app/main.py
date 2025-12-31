@@ -727,16 +727,15 @@ async def show_research_form():
         # Store in session
         cl.user_session.set(RESEARCH_PARAMS_SESSION_KEY, form_data)
         cl.user_session.set(INDUSTRY_PROMPT_SESSION_KEY, form_data.get("sector", DEFAULT_INDUSTRY))
-        
-        # Generate the prompt and run research directly
-        await generate_and_run_research(form_data)
+        # Generate the prompt (no auto-run - user copies and pastes)
+        await generate_research_prompt(form_data)
     else:
         # User cancelled or timed out
         await cl.Message("Form cancelled or timed out. You can type your research question directly.").send()
 
 
-async def generate_and_run_research(params_dict: dict):
-    """Generate research prompt and immediately run the research."""
+async def generate_research_prompt(params_dict: dict):
+    """Generate and display the research prompt for user to copy/paste."""
     try:
         # Create ResearchParameters
         params = ResearchParameters(
@@ -763,71 +762,22 @@ async def generate_and_run_research(params_dict: dict):
         await cl.Message("⏳ Generating research prompt...").send()
         generated_prompt = await prompt_gen.generate(params)
         
-        # Show the generated prompt
+        # Show generated prompt for user to copy and paste
         await cl.Message(
-            f"✅ **Generated Research Prompt:**\n\n{generated_prompt}\n\n---\n🔬 **Starting Deep Research...**"
+            f"""✅ **Generated Research Prompt:**
+
+```
+{generated_prompt}
+```
+
+**Copy** this prompt, **paste** it in the chat input below, edit if needed, and **press Enter** to start the research."""
         ).send()
         
-        logger.info(f"Generated prompt: {generated_prompt}")
-        
-        # Get required services
-        ctx = _get_ctx()
-        ctx.add_message("user", generated_prompt)
-        
-        # Get selected industry prompt
-        selected_industry = params_dict.get("sector", DEFAULT_INDUSTRY)
-        
-        # Create a progress message that will be updated in real-time
-        progress_msg = cl.Message(
-            content=f"**Deep Research Started** (Industry: {selected_industry})\n\n"
-                    f"Status: Initializing...\n"
-                    f"Sources Found: 0"
-        )
-        await progress_msg.send()
-        
-        # Define progress callback
-        async def progress_callback(text: str, metadata: dict):
-            """Update progress message with latest research status."""
-            try:
-                citation_count = metadata.get('citation_count', 0)
-                stage = metadata.get('stage', 'researching')
-                progress_msg.content = (
-                    f"**Deep Research in Progress** (Industry: {selected_industry})\n\n"
-                    f"Status: {text}\n"
-                    f"Sources Found: {citation_count}"
-                )
-                await progress_msg.update()
-            except Exception as e:
-                logger.warning(f"Progress update failed: {e}")
-        
-        # Run the deep research
-        from services.deep_research_client import get_deep_research_client
-        client = await get_deep_research_client()
-        if not client:
-            await cl.Message("❌ Deep Research client not available.").send()
-            return
-        
-        result = await client.run_query(
-            query=generated_prompt,
-            industry=selected_industry,
-            progress_callback=progress_callback
-        )
-        
-        if result and result.output:
-            # Format and display results
-            final_content = f"## Deep Research Results\n\n{result.output}"
-            if result.citations:
-                final_content += f"\n\n### Sources ({len(result.citations)} citations)\n"
-                for i, citation in enumerate(result.citations[:10], 1):
-                    final_content += f"{i}. [{citation.title}]({citation.url})\n"
-            
-            await cl.Message(content=final_content).send()
-        else:
-            await cl.Message("⚠️ Research completed but no results were returned.").send()
+        logger.info(f"Generated prompt for sector={params.sector}")
         
     except Exception as e:
-        logger.exception(f"Error in generate_and_run_research: {e}")
-        await cl.Message(f"❌ Error: {str(e)}").send()
+        logger.exception(f"Error generating prompt: {e}")
+        await cl.Message(f"❌ Error generating prompt: {str(e)}").send()
 
 
 
