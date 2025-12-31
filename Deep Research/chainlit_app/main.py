@@ -700,16 +700,28 @@ async def show_research_form():
     )
     
     # Ask for element - this blocks until user submits or cancels
+    # Note: AskElementMessage takes 'element' (singular), not 'elements'
     response = await cl.AskElementMessage(
         content="**Configure your research parameters below:**",
-        elements=[form_element],
+        element=form_element,
         timeout=300  # 5 minutes
     ).send()
     
-    if response:
-        # User submitted the form
-        form_data = response.get("output", {})
-        logger.info(f"Research form submitted: {form_data}")
+    if response and response.get("submitted"):
+        # User submitted the form - fields are directly on the response object
+        logger.info(f"Research form submitted: {response}")
+        
+        # Extract form data from response (fields are directly accessible)
+        form_data = {
+            "sector": response.get("sector", DEFAULT_INDUSTRY),
+            "company": response.get("company", ""),
+            "signals": response.get("signals", ""),
+            "service_lines": response.get("service_lines", ""),
+            "geography": response.get("geography", ""),
+            "min_value": response.get("min_value", ""),
+            "time_window": response.get("time_window", ""),
+            "max_opportunities": response.get("max_opportunities", "10")
+        }
         
         # Store in session
         cl.user_session.set(RESEARCH_PARAMS_SESSION_KEY, form_data)
