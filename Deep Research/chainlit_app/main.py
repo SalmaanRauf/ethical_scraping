@@ -11,7 +11,6 @@ if PROJECT_ROOT not in sys.path:
 import logging
 from config.logging_config import setup_logging
 import chainlit as cl
-from chainlit.input_widget import Select, TextInput, Slider
 import asyncio
 from typing import Dict, Any, Optional, List
 import os
@@ -668,136 +667,67 @@ async def update_mode(action: cl.Action):
     
     # If Deep Research mode selected, show the research parameters form
     if selected == "deep":
-        await show_research_settings_form()
+        await show_research_form()
 
 
-async def show_research_settings_form():
-    """Show the ChatSettings form with research parameters."""
+async def show_research_form():
+    """Show the research parameters form using CustomElement."""
     from services.prompt_loader import PromptLoader
     loader = PromptLoader()
     industries = loader.get_available_industries()
     
-    # Build industry options for Select widget
-    industry_values = [key for key in industries.keys()]
-    industry_labels = {key: f"{meta['display_name']}" for key, meta in industries.items()}
-    
-    # Create the settings form
-    settings = await cl.ChatSettings(
-        [
-            Select(
-                id="sector",
-                label="Sector / Industry",
-                values=industry_values,
-                initial_index=industry_values.index("general") if "general" in industry_values else 0,
-                description="Select the industry focus for your research"
-            ),
-            TextInput(
-                id="company",
-                label="Company or Topic",
-                placeholder="e.g., Lockheed Martin, cloud security trends",
-                description="The company or topic to research"
-            ),
-            TextInput(
-                id="signals",
-                label="Signals to Detect",
-                placeholder="e.g., CMMC, IV&V, Consent Order",
-                description="Comma-separated signals to look for"
-            ),
-            TextInput(
-                id="service_lines",
-                label="Service Lines",
-                placeholder="e.g., Model Validation, Cybersecurity Compliance",
-                description="Relevant Protiviti service lines"
-            ),
-            TextInput(
-                id="geography",
-                label="Geography",
-                placeholder="e.g., CONUS, EMEA, Global",
-                description="Geographic focus for the research"
-            ),
-            TextInput(
-                id="min_value",
-                label="Min Value USD",
-                placeholder="e.g., 10M, 100M",
-                description="Minimum contract/opportunity value"
-            ),
-            TextInput(
-                id="time_window",
-                label="Time Window",
-                placeholder="e.g., Last 90 days, Last year",
-                description="Time period for the research"
-            ),
-            TextInput(
-                id="max_opportunities",
-                label="Max Opportunities",
-                placeholder="e.g., 10, 20",
-                initial="10",
-                description="Maximum number of opportunities to return"
-            ),
-        ]
-    ).send()
-    
-    # Store initial settings
-    cl.user_session.set(RESEARCH_PARAMS_SESSION_KEY, dict(settings))
-    cl.user_session.set(INDUSTRY_PROMPT_SESSION_KEY, settings.get("sector", DEFAULT_INDUSTRY))
-    
-    # Send instruction message with Generate Prompt button
-    sector = settings.get("sector", DEFAULT_INDUSTRY)
-    actions = [
-        cl.Action(
-            name="generate_prompt",
-            label="🚀 Generate Prompt",
-            payload={"sector": sector}
-        ),
-        cl.Action(
-            name="skip_params",
-            label="Skip (use defaults)",
-            payload={"sector": sector}
-        )
+    # Build sector options for the form
+    sectors = [
+        {"value": key, "label": meta["display_name"]}
+        for key, meta in industries.items()
     ]
     
-    await cl.Message(
-        content=(
-            "**Research Parameters Form**\n\n"
-            "Fill in the fields above (click the ⚙️ settings icon in the top right if needed), "
-            "then click **Generate Prompt** to create your research query.\n\n"
-            "You can also update settings anytime during the session."
-        ),
-        actions=actions
+    # Create the custom element form
+    form_element = cl.CustomElement(
+        name="ResearchForm",
+        display="inline",
+        props={
+            "sectors": sectors,
+            "sector": "general",
+            "company": "",
+            "signals": "",
+            "service_lines": "",
+            "geography": "",
+            "min_value": "",
+            "time_window": "",
+            "max_opportunities": "10"
+        }
+    )
+    
+    # Ask for element - this blocks until user submits or cancels
+    response = await cl.AskElementMessage(
+        content="**Configure your research parameters below:**",
+        elements=[form_element],
+        timeout=300  # 5 minutes
     ).send()
-
-
-@cl.on_settings_update
-async def handle_settings_update(settings):
-    """Handle updates to the research settings form."""
-    logger.info(f"Settings updated: {settings}")
     
-    # Update session with new settings
-    cl.user_session.set(RESEARCH_PARAMS_SESSION_KEY, dict(settings))
-    
-    # Update industry if changed
-    if "sector" in settings:
-        cl.user_session.set(INDUSTRY_PROMPT_SESSION_KEY, settings["sector"])
-    
-    await cl.Message(f"✓ Settings updated").send()
-
-
-
-
-
-
-
-
-@cl.action_callback("generate_prompt")
-async def handle_generate_prompt(action: cl.Action):
-    """Generate research prompt from collected parameters."""
-    try:
-        sector = (action.payload or {}).get("sector", DEFAULT_INDUSTRY)
-        params_dict = cl.user_session.get(RESEARCH_PARAMS_SESSION_KEY, {})
+    if response:
+        # User submitted the form
+        form_data = response.get("output", {})
+        logger.info(f"Research form submitted: {form_data}")
         
+        # Store in session
+        cl.user_session.set(RESEARCH_PARAMS_SESSION_KEY, form_data)
+        cl.user_session.set(INDUSTRY_PROMPT_SESSION_KEY, form_data.get("sector", DEFAULT_INDUSTRY))
+        
+        # Generate the prompt
+        await generate_research_prompt(form_data)
+    else:
+        # User cancelled or timed out
+        await cl.Message("Form cancelled or timed out. You can type your research question directly.").send()
+
+
+async def generate_research_prompt(params_dict: dict):
+    """Generate and display the research prompt from form parameters."""
+    try:
         # Create ResearchParameters
         params = ResearchParameters(
-            sector=params_dict.get("sector", sector),
+            sector=params_dict.get("sector", DEFAULT_INDUSTRY),
             company=params_dict.get("company", ""),
             signals=params_dict.get("signals", ""),
             service_lines=params_dict.get("service_lines", ""),
@@ -830,22 +760,11 @@ async def handle_generate_prompt(action: cl.Action):
 **Copy this prompt**, paste it in the chat input below, edit if needed, and press Enter to start the research."""
         ).send()
         
-        logger.info(f"Generated prompt for sector={sector}")
+        logger.info(f"Generated prompt for sector={params.sector}")
         
     except Exception as e:
         logger.exception(f"Error generating prompt: {e}")
         await cl.Message(f"❌ Error generating prompt: {str(e)}").send()
-
-
-@cl.action_callback("skip_params")
-async def handle_skip_params(action: cl.Action):
-    """Skip parameter form and proceed with defaults."""
-    sector = (action.payload or {}).get("sector", DEFAULT_INDUSTRY)
-    await cl.Message(
-        f"✓ Using defaults for **{sector.replace('_', ' ').title()}** sector.\n\n"
-        f"You can now type your research question directly in the chat."
-    ).send()
-
 
 
 
