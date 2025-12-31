@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import React, { useState } from 'react';
 
 export default function ResearchForm() {
@@ -14,7 +15,8 @@ export default function ResearchForm() {
         geography: props.geography || '',
         min_value: props.min_value || '',
         time_window: props.time_window || '',
-        max_opportunities: props.max_opportunities || '10'
+        max_opportunities: props.max_opportunities || '10',
+        other_context: props.other_context || ''
     });
 
     const sectors = props.sectors || [
@@ -129,6 +131,18 @@ export default function ResearchForm() {
                         onChange={(e) => handleChange('max_opportunities', e.target.value)}
                     />
                 </div>
+
+                {/* Other Context - spans full width */}
+                <div className="flex flex-col gap-2 col-span-2">
+                    <Label htmlFor="other_context">Other Context (optional)</Label>
+                    <Textarea
+                        id="other_context"
+                        placeholder="Any additional context, focus areas, or special instructions..."
+                        value={values.other_context}
+                        onChange={(e) => handleChange('other_context', e.target.value)}
+                        rows={3}
+                    />
+                </div>
             </CardContent>
 
             <CardFooter className="flex justify-end gap-2">
@@ -136,7 +150,7 @@ export default function ResearchForm() {
                     Cancel
                 </Button>
                 <Button onClick={() => submitElement(values)}>
-                    🚀 Generate Prompt
+                    🚀 Generate & Run Research
                 </Button>
             </CardFooter>
         </Card>
